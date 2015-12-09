@@ -36,7 +36,11 @@ public:
 
 };
 
+<<<<<<< HEAD
 class LLVM_LIBRARY_VISIBILITY Linux : public ToolChain {
+=======
+class LLVM_LIBRARY_VISIBILITY GenericUnix : public ToolChain {
+>>>>>>> refs/remotes/apple/master
 protected:
   InvocationInfo constructInvocation(const InterpretJobAction &job,
                                      const JobContext &context) const override;
@@ -46,8 +50,8 @@ protected:
                                      const JobContext &context) const override;
 
 public:
-  Linux(const Driver &D, const llvm::Triple &Triple) : ToolChain(D, Triple) {}
-  ~Linux() = default;
+  GenericUnix(const Driver &D, const llvm::Triple &Triple) : ToolChain(D, Triple) {}
+  ~GenericUnix() = default;
 };
 
 } // end namespace toolchains
@@ -55,3 +59,4 @@ public:
 } // end namespace swift
 
 #endif
+

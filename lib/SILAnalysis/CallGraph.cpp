@@ -294,10 +294,6 @@ CallGraphEdge *CallGraph::makeCallGraphEdgeForCallee(FullApplySite Apply,
                                                     WMI->getMember());
 
     if (CalleeFn) {
-      if (CalleeFn->isExternalDeclaration())
-        M.linkFunction(CalleeFn, SILModule::LinkingMode::LinkAll,
-                       CallGraphLinkerEditor(this).getCallback());
-
       auto *CalleeNode = getOrAddCallGraphNode(CalleeFn);
       return new (Allocator) CallGraphEdge(Apply.getInstruction(), CalleeNode,
                                            EdgeOrdinal++);
@@ -784,86 +780,6 @@ void CallGraph::computeBottomUpFunctionOrder() {
   for (auto *SCC : BottomUpSCCOrder)
     for (auto *Fn : SCC->SCCNodes)
       BottomUpFunctionOrder.push_back(Fn);
-}
-
-//===----------------------------------------------------------------------===//
-//                           CallGraphEditor
-//===----------------------------------------------------------------------===//
-
-void CallGraphEditor::replaceApplyWithNew(FullApplySite Old,
-                                          FullApplySite New) {
-  if (!CG)
-    return;
-
-  if (auto *Edge = CG->tryGetCallGraphEdge(Old.getInstruction()))
-    CG->removeEdgeFromFunction(Edge, Old.getInstruction()->getFunction());
-
-  CG->addEdgesForInstruction(New.getInstruction());
-}
-
-void CallGraphEditor::replaceApplyWithCallSites(FullApplySite Old,
-                        llvm::SmallVectorImpl<SILInstruction *> &NewCallSites) {
-  if (!CG)
-    return;
-
-  if (auto *Edge = CG->tryGetCallGraphEdge(Old.getInstruction()))
-    CG->removeEdgeFromFunction(Edge, Old.getInstruction()->getFunction());
-
-  for (auto NewApply : NewCallSites)
-    CG->addEdgesForInstruction(NewApply);
-}
-
-void CallGraphEditor::moveNodeToNewFunction(SILFunction *Old,
-                                            SILFunction *New) {
-  if (!CG)
-    return;
-
-  auto Iter = CG->FunctionToNodeMap.find(Old);
-  assert(Iter != CG->FunctionToNodeMap.end());
-  auto *Node = Iter->second;
-  CG->FunctionToNodeMap.erase(Iter);
-  CG->FunctionToNodeMap[New] = Node;
-}
-
-void CallGraphEditor::removeAllCalleeEdgesFrom(SILFunction *F) {
-  if (!CG)
-    return;
-
-  auto &CalleeEdges = CG->getCallGraphNode(F)->getCalleeEdges();
-  while (!CalleeEdges.empty()) {
-    auto *Edge = *CalleeEdges.begin();
-    CG->removeEdgeFromFunction(Edge, F);
-  }
-}
-
-void CallGraphEditor::removeAllCallerEdgesFrom(SILFunction *F) {
-  if (!CG)
-    return;
-
-  auto &CallerEdges = CG->getCallGraphNode(F)->getCallerEdges();
-  while (!CallerEdges.empty()) {
-    auto *Edge = *CallerEdges.begin();
-    auto Apply = Edge->getInstruction();
-    CG->removeEdgeFromFunction(Edge, Apply->getFunction());
-  }
-}
-
-void CallGraphEditor::updatePartialApplyUses(swift::ApplySite AI) {
-  if (!CG)
-    return;
-
-  for (auto *Use : AI.getInstruction()->getUses()) {
-    if (auto FAS = FullApplySite::isa(Use->getUser()))
-      replaceApplyWithNew(FAS, FAS);
-  }
-}
-
-void CallGraphEditor::eraseFunction(SILFunction *F) {
-  auto &M = F->getModule();
-  M.eraseFunction(F);
-
-  if (CG)
-    removeCallGraphNode(F);
 }
 
 //===----------------------------------------------------------------------===//

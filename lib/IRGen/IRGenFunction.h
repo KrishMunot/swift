@@ -261,6 +261,10 @@ public:
   //   - strong references
   void emitStrongRetain(llvm::Value *value, ReferenceCounting refcounting);
   void emitStrongRelease(llvm::Value *value, ReferenceCounting refcounting);
+<<<<<<< HEAD
+=======
+  llvm::Value *emitLoadRefcountedPtr(Address addr, ReferenceCounting style);
+>>>>>>> refs/remotes/apple/master
 
   //   - unowned references
   void emitUnownedRetain(llvm::Value *value, ReferenceCounting style);
@@ -322,6 +326,10 @@ public:
   llvm::Value *emitNativeUnownedLoadStrong(Address src, llvm::Type *resultType);
   llvm::Value *emitNativeUnownedTakeStrong(Address src, llvm::Type *resultType);
   void emitNativeUnownedDestroy(Address addr);
+<<<<<<< HEAD
+=======
+
+>>>>>>> refs/remotes/apple/master
   //   - weak references
   void emitNativeWeakInit(llvm::Value *value, Address dest);
   void emitNativeWeakAssign(llvm::Value *value, Address dest);
@@ -351,10 +359,13 @@ public:
   void emitUnknownStrongRetain(llvm::Value *value);
   void emitUnknownStrongRelease(llvm::Value *value);
   //   - unowned references
+<<<<<<< HEAD
   void emitUnknownUnownedRetain(llvm::Value *value);
   void emitUnknownUnownedRelease(llvm::Value *value);
   void emitUnknownStrongRetainUnowned(llvm::Value *value);
   void emitUnknownStrongRetainAndUnownedRelease(llvm::Value *value);
+=======
+>>>>>>> refs/remotes/apple/master
   void emitUnknownUnownedInit(llvm::Value *val, Address dest);
   void emitUnknownUnownedAssign(llvm::Value *value, Address dest);
   void emitUnknownUnownedCopyInit(Address destAddr, Address srcAddr);
@@ -383,9 +394,12 @@ public:
   void emitErrorStrongRetain(llvm::Value *value);
   void emitErrorStrongRelease(llvm::Value *value);
 
+<<<<<<< HEAD
   llvm::Value *emitLoadNativeRefcountedPtr(Address addr);
   llvm::Value *emitLoadUnknownRefcountedPtr(Address addr);
   llvm::Value *emitLoadBridgeRefcountedPtr(Address addr);
+=======
+>>>>>>> refs/remotes/apple/master
   llvm::Value *emitIsUniqueCall(llvm::Value *value, SourceLoc loc,
                                 bool isNonNull, bool checkPinned);
 

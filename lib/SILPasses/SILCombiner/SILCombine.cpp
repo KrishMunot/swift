@@ -355,8 +355,11 @@ class SILCombine : public SILFunctionTransform {
     }
   }
 
+<<<<<<< HEAD
   virtual void handleDeleteNotification(ValueBase *I) override { }
 
+=======
+>>>>>>> refs/remotes/apple/master
   StringRef getName() override { return "SIL Combine"; }
 };
 

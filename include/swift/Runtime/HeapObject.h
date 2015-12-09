@@ -392,6 +392,7 @@ struct UnownedReference {
 
 /// Increment the weak/unowned retain count.
 extern "C" void swift_unownedRetain(HeapObject *value);
+<<<<<<< HEAD
 
 /// Decrement the weak/unowned retain count.
 extern "C" void swift_unownedRelease(HeapObject *value);
@@ -402,6 +403,18 @@ extern "C" void swift_unownedRetain_n(HeapObject *value, int n);
 /// Decrement the weak/unowned retain count by n.
 extern "C" void swift_unownedRelease_n(HeapObject *value, int n);
 
+=======
+
+/// Decrement the weak/unowned retain count.
+extern "C" void swift_unownedRelease(HeapObject *value);
+
+/// Increment the weak/unowned retain count by n.
+extern "C" void swift_unownedRetain_n(HeapObject *value, int n);
+
+/// Decrement the weak/unowned retain count by n.
+extern "C" void swift_unownedRelease_n(HeapObject *value, int n);
+
+>>>>>>> refs/remotes/apple/master
 /// Increment the strong retain count of an object, aborting if it has
 /// been deallocated.
 extern "C" void swift_unownedRetainStrong(HeapObject *value);
@@ -743,6 +756,7 @@ static inline void swift_unknownWeakTakeAssign(WeakReference *dest, WeakReferenc
 /************************ UNKNOWN UNOWNED REFERENCES *************************/
 /*****************************************************************************/
 
+<<<<<<< HEAD
 // TODO: these first three functions cannot be correctly supported.
 
 #if SWIFT_OBJC_INTEROP
@@ -787,6 +801,8 @@ static inline void swift_unknownUnownedRelease(void *value) {
 
 #endif /* SWIFT_OBJC_INTEROP */
 
+=======
+>>>>>>> refs/remotes/apple/master
 #if SWIFT_OBJC_INTEROP
 
 /// Initialize an unowned reference to an object with unknown reference

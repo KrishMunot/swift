@@ -436,6 +436,7 @@ static NSString *_getClassDescription(Class cls) {
 
 @end
 
+<<<<<<< HEAD
 /*****************************************************************************/
 /****************************** WEAK REFERENCES ******************************/
 /*****************************************************************************/
@@ -509,6 +510,8 @@ static void objc_rootUnownedRelease(id object) {
     Unowned.Refs.erase(it);
   }
 }
+=======
+>>>>>>> refs/remotes/apple/master
 #endif
 
 /// Decide dynamically whether the given object uses native Swift
@@ -550,21 +553,6 @@ static uintptr_t const objectPointerIsObjCBit = 0x00000002U;
 static bool usesNativeSwiftReferenceCounting_allocated(const void *object) {
   assert(!isObjCTaggedPointerOrNull(object));
   return usesNativeSwiftReferenceCounting(_swift_getClassOfAllocated(object));
-}
-
-static bool usesNativeSwiftReferenceCounting_unowned(const void *object) {
-  auto &Unowned = UnownedRefs.get();
-
-  // If an unknown object is unowned-referenced, it may in fact be implemented
-  // using an ObjC weak reference, which will eagerly deallocate the object
-  // when strongly released. We have to check first whether the object is in
-  // the side table before dereferencing the pointer.
-  if (Unowned.Refs.count(object))
-    return false;
-  // For a natively unowned reference, even after all strong references have
-  // been released, there's enough of a husk left behind to determine its
-  // species.
-  return usesNativeSwiftReferenceCounting_allocated(object);
 }
 
 void swift::swift_unknownRetain_n(void *object, int n) {
@@ -806,6 +794,7 @@ namespace {
       return (uintptr_t(ref->Value) & IsObjCMask) == IsObjCFlag;
     }
   };
+<<<<<<< HEAD
 }
 
 static bool isObjCForUnownedReference(void *value) {
@@ -960,6 +949,139 @@ void swift::swift_unknownUnownedRelease(void *object) {
   objc_rootUnownedRelease((id) object);
 }
 
+=======
+}
+
+static bool isObjCForUnownedReference(void *value) {
+  return (isObjCTaggedPointer(value) ||
+          !usesNativeSwiftReferenceCounting_allocated(value));
+}
+
+void swift::swift_unknownUnownedInit(UnownedReference *dest, void *value) {
+  if (!value) {
+    dest->Value = nullptr;
+  } else if (isObjCForUnownedReference(value)) {
+    ObjCUnownedReference::initialize(dest, (id) value);
+  } else {
+    swift_unownedInit(dest, (HeapObject*) value);
+  }
+}
+
+void swift::swift_unknownUnownedAssign(UnownedReference *dest, void *value) {
+  if (!value) {
+    swift_unknownUnownedDestroy(dest);
+    dest->Value = nullptr;
+  } else if (isObjCForUnownedReference(value)) {
+    if (auto objcDest = dyn_cast<ObjCUnownedReference>(dest)) {
+      objc_storeWeak(&objcDest->storage()->WeakRef, (id) value);
+    } else {
+      swift_unownedDestroy(dest);
+      ObjCUnownedReference::initialize(dest, (id) value);
+    }
+  } else {
+    if (auto objcDest = dyn_cast<ObjCUnownedReference>(dest)) {
+      delete objcDest->storage();
+      swift_unownedInit(dest, (HeapObject*) value);
+    } else {
+      swift_unownedAssign(dest, (HeapObject*) value);
+    }
+  }
+}
+
+void *swift::swift_unknownUnownedLoadStrong(UnownedReference *ref) {
+  if (!ref->Value) {
+    return nullptr;
+  } else if (auto objcRef = dyn_cast<ObjCUnownedReference>(ref)) {
+    auto result = (void*) objc_loadWeakRetained(&objcRef->storage()->WeakRef);
+    if (result == nullptr) {
+      _swift_abortRetainUnowned(nullptr);
+    }
+    return result;
+  } else {
+    return swift_unownedLoadStrong(ref);
+  }
+}
+
+void *swift::swift_unknownUnownedTakeStrong(UnownedReference *ref) {
+  if (!ref->Value) {
+    return nullptr;
+  } else if (auto objcRef = dyn_cast<ObjCUnownedReference>(ref)) {
+    auto storage = objcRef->storage();
+    auto result = (void*) objc_loadWeakRetained(&objcRef->storage()->WeakRef);
+    if (result == nullptr) {
+      _swift_abortRetainUnowned(nullptr);
+    }
+    delete storage;
+    return result;
+  } else {
+    return swift_unownedTakeStrong(ref);
+  }
+}
+
+void swift::swift_unknownUnownedDestroy(UnownedReference *ref) {
+  if (!ref->Value) {
+    // Nothing to do.
+    return;
+  } else if (auto objcRef = dyn_cast<ObjCUnownedReference>(ref)) {
+    delete objcRef->storage();
+  } else {
+    swift_unownedDestroy(ref);
+  }
+}
+
+void swift::swift_unknownUnownedCopyInit(UnownedReference *dest,
+                                         UnownedReference *src) {
+  assert(dest != src);
+  if (!src->Value) {
+    dest->Value = nullptr;
+  } else if (auto objcSrc = dyn_cast<ObjCUnownedReference>(src)) {
+    ObjCUnownedReference::initializeWithCopy(dest, objcSrc->storage());
+  } else {
+    swift_unownedCopyInit(dest, src);
+  }
+}
+
+void swift::swift_unknownUnownedTakeInit(UnownedReference *dest,
+                                         UnownedReference *src) {
+  assert(dest != src);
+  dest->Value = src->Value;
+}
+
+void swift::swift_unknownUnownedCopyAssign(UnownedReference *dest,
+                                           UnownedReference *src) {
+  if (dest == src) return;
+
+  if (auto objcSrc = dyn_cast<ObjCUnownedReference>(src)) {
+    if (auto objcDest = dyn_cast<ObjCUnownedReference>(dest)) {
+      // ObjC unfortunately doesn't expose a copy-assign operation.
+      objc_destroyWeak(&objcDest->storage()->WeakRef);
+      objc_copyWeak(&objcDest->storage()->WeakRef,
+                    &objcSrc->storage()->WeakRef);
+      return;
+    }
+
+    swift_unownedDestroy(dest);
+    ObjCUnownedReference::initializeWithCopy(dest, objcSrc->storage());
+  } else {
+    if (auto objcDest = dyn_cast<ObjCUnownedReference>(dest)) {
+      delete objcDest->storage();
+      swift_unownedCopyInit(dest, src);
+    } else {
+      swift_unownedCopyAssign(dest, src);
+    }
+  }
+}
+
+void swift::swift_unknownUnownedTakeAssign(UnownedReference *dest,
+                                           UnownedReference *src) {
+  assert(dest != src);
+
+  // There's not really anything more efficient to do here than this.
+  swift_unknownUnownedDestroy(dest);
+  dest->Value = src->Value;
+}
+
+>>>>>>> refs/remotes/apple/master
 /*****************************************************************************/
 /****************************** WEAK REFERENCES ******************************/
 /*****************************************************************************/

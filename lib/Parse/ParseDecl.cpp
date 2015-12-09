@@ -2177,6 +2177,19 @@ ParserResult<ImportDecl> Parser::parseDeclImport(ParseDeclOptions Flags,
       return nullptr;
   } while (consumeIf(tok::period));
 
+  if (Tok.is(tok::code_complete)) {
+    // We omit the code completion token if it immediately follows the module
+    // identifiers.
+    auto BufferId = SourceMgr.getCodeCompletionBufferID();
+    auto IdEndOffset = SourceMgr.getLocOffsetInBuffer(ImportPath.back().second,
+      BufferId) + ImportPath.back().first.str().size();
+    auto CCTokenOffeset =  SourceMgr.getLocOffsetInBuffer(SourceMgr.
+      getCodeCompletionLoc(), BufferId);
+    if (IdEndOffset == CCTokenOffeset) {
+      consumeToken();
+    }
+  }
+
   if (Kind != ImportKind::Module && ImportPath.size() == 1) {
     diagnose(ImportPath.front().second, diag::decl_expected_module_name);
     return nullptr;
@@ -3643,7 +3656,7 @@ ParserStatus Parser::parseDeclVar(ParseDeclOptions Flags,
 
   // No matter what error path we take, make sure the
   // PatternBindingDecl/TopLevel code block are added.
-  defer([&]{
+  defer {
     // If we didn't parse any patterns, don't create the pattern binding decl.
     if (PBDEntries.empty())
       return;
@@ -3683,7 +3696,7 @@ ParserStatus Parser::parseDeclVar(ParseDeclOptions Flags,
     // specific spot to get it in before any accessors, which SILGen seems to
     // want.
     Decls.insert(Decls.begin()+NumDeclsInResult, PBD);
-  });
+  };
 
   do {
     Pattern *pattern;

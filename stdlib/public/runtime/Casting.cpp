@@ -1388,6 +1388,7 @@ swift::swift_dynamicCastMetatypeUnconditional(const Metadata *sourceType,
   }
 }
 
+#if SWIFT_OBJC_INTEROP
 /// Do a dynamic cast to the target class.
 static void *_dynamicCastUnknownClass(void *object,
                                       const Metadata *targetType,
@@ -1400,6 +1401,7 @@ static void *_dynamicCastUnknownClass(void *object,
 
   return const_cast<void*>(swift_dynamicCastUnknownClass(object, targetType));
 }
+#endif
 
 static bool _dynamicCastUnknownClassIndirect(OpaqueValue *dest,
                                              void *object,
@@ -2271,7 +2273,7 @@ namespace {
 #  if __APPLE__
       assert((!Success && Data <= 0xFFFFFFFFU) ||
              (Success && Data > 0xFFFFFFFFU));
-#  elif __linux__
+#  elif __linux__ || __FreeBSD__
       assert((!Success && Data <= 0x0FFFU) ||
              (Success && Data > 0x0FFFU));
 #  else
@@ -2306,7 +2308,7 @@ namespace {
 #if __LP64__
 #  if __APPLE__
       return Data > 0xFFFFFFFFU;
-#  elif __linux__
+#  elif __linux__ || __FreeBSD__
       return Data > 0x0FFFU;
 #  else
 #    error "port me"

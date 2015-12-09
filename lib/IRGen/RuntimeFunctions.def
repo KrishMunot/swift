@@ -325,6 +325,7 @@ FUNCTION(UnknownWeakTakeAssign, swift_unknownWeakTakeAssign,RuntimeCC,
          ARGS(WeakReferencePtrTy, WeakReferencePtrTy),
          ATTRS(NoUnwind))
 
+<<<<<<< HEAD
 // void swift_unknownUnownedRetainStrong(void *object);
 FUNCTION(UnknownStrongRetainUnowned, swift_unknownUnownedRetainStrong,RuntimeCC,
          RETURNS(VoidTy),
@@ -343,6 +344,8 @@ FUNCTION(UnknownUnownedRelease,    swift_unknownUnownedRelease,   RuntimeCC,
          ARGS(UnknownRefCountedPtrTy),
          ATTRS(NoUnwind))
 
+=======
+>>>>>>> refs/remotes/apple/master
 // void swift_unknownUnownedDestroy(UnownedReference *object);
 FUNCTION(UnknownUnownedDestroy,    swift_unknownUnownedDestroy,   RuntimeCC,
          RETURNS(VoidTy),

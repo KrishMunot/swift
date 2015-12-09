@@ -354,6 +354,7 @@ ToolChain::constructInvocation(const CompileJobAction &job,
     program = SWIFT_UPDATE_NAME;
 
   return {program, Arguments};
+<<<<<<< HEAD
 }
 
 ToolChain::InvocationInfo
@@ -395,6 +396,49 @@ ToolChain::constructInvocation(const InterpretJobAction &job,
 }
 
 ToolChain::InvocationInfo
+=======
+}
+
+ToolChain::InvocationInfo
+ToolChain::constructInvocation(const InterpretJobAction &job,
+                               const JobContext &context) const {
+  assert(context.OI.CompilerMode == OutputInfo::Mode::Immediate);
+  ArgStringList Arguments;
+
+  Arguments.push_back("-frontend");
+  Arguments.push_back("-interpret");
+
+  assert(context.Inputs.empty() &&
+         "The Swift frontend does not expect to be fed any input Jobs!");
+
+  for (const Action *A : context.InputActions) {
+    cast<InputAction>(A)->getInputArg().render(context.Args, Arguments);
+  }
+
+  if (context.Args.hasArg(options::OPT_parse_stdlib))
+    Arguments.push_back("-disable-objc-attr-requires-foundation-module");
+
+  addCommonFrontendArgs(*this, context.OI, context.Output, context.Args,
+                        Arguments);
+
+  // Pass the optimization level down to the frontend.
+  context.Args.AddLastArg(Arguments, options::OPT_O_Group);
+
+  context.Args.AddLastArg(Arguments, options::OPT_parse_sil);
+
+  Arguments.push_back("-module-name");
+  Arguments.push_back(context.Args.MakeArgString(context.OI.ModuleName));
+
+  context.Args.AddAllArgs(Arguments, options::OPT_l, options::OPT_framework);
+
+  // The immediate arguments must be last.
+  context.Args.AddLastArg(Arguments, options::OPT__DASH_DASH);
+
+  return {SWIFT_EXECUTABLE_NAME, Arguments};
+}
+
+ToolChain::InvocationInfo
+>>>>>>> refs/remotes/apple/master
 ToolChain::constructInvocation(const BackendJobAction &job,
                                const JobContext &context) const {
   assert(context.Args.hasArg(options::OPT_embed_bitcode));
@@ -996,6 +1040,7 @@ toolchains::Darwin::constructInvocation(const LinkJobAction &job,
   Arguments.push_back(context.Output.getPrimaryOutputFilename().c_str());
 
   return {"ld", Arguments};
+<<<<<<< HEAD
 }
 
 ToolChain::InvocationInfo
@@ -1016,6 +1061,28 @@ toolchains::Linux::constructInvocation(const InterpretJobAction &job,
 ToolChain::InvocationInfo
 toolchains::Linux::constructInvocation(const AutolinkExtractJobAction &job,
                                        const JobContext &context) const {
+=======
+}
+
+ToolChain::InvocationInfo
+toolchains::GenericUnix::constructInvocation(const InterpretJobAction &job,
+                                             const JobContext &context) const {
+  InvocationInfo II = ToolChain::constructInvocation(job, context);
+
+  SmallString<128> runtimeLibraryPath;
+  getRuntimeLibraryPath(runtimeLibraryPath, context.Args, *this);
+
+  addPathEnvironmentVariableIfNeeded(II.ExtraEnvironment, "LD_LIBRARY_PATH",
+                                     ":", options::OPT_L, context.Args,
+                                     runtimeLibraryPath);
+  return II;
+}
+
+
+ToolChain::InvocationInfo
+toolchains::GenericUnix::constructInvocation(const AutolinkExtractJobAction &job,
+                                             const JobContext &context) const {
+>>>>>>> refs/remotes/apple/master
   assert(context.Output.getPrimaryOutputType() == types::TY_AutolinkFile);
 
   ArgStringList Arguments;
@@ -1030,8 +1097,13 @@ toolchains::Linux::constructInvocation(const AutolinkExtractJobAction &job,
 }
 
 ToolChain::InvocationInfo
+<<<<<<< HEAD
 toolchains::Linux::constructInvocation(const LinkJobAction &job,
                                        const JobContext &context) const {
+=======
+toolchains::GenericUnix::constructInvocation(const LinkJobAction &job,
+                                             const JobContext &context) const {
+>>>>>>> refs/remotes/apple/master
   const Driver &D = getDriver();
 
   assert(context.Output.getPrimaryOutputType() == types::TY_Image &&
