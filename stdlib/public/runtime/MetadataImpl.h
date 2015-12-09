@@ -381,16 +381,6 @@ struct ObjCUnownedRetainableBox
 
   static constexpr unsigned numExtraInhabitants =
     swift_getHeapObjectExtraInhabitantCount();
-<<<<<<< HEAD
-
-  static void *retain(void *obj) {
-    swift_unknownUnownedRetain(obj);
-    return obj;
-  }
-
-  static void release(void *obj) {
-    swift_unknownUnownedRelease(obj);
-=======
   static void storeExtraInhabitant(UnownedReference *dest, int index) {
     swift_storeHeapObjectExtraInhabitant(&dest->Value, index);
   }
@@ -420,7 +410,6 @@ struct ObjCUnownedRetainableBox
                                           UnownedReference *src) {
     swift_unknownUnownedTakeAssign(dest, src);
     return dest;
->>>>>>> refs/remotes/apple/master
   }
 };
 

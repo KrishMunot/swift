@@ -36,11 +36,7 @@ public:
 
 };
 
-<<<<<<< HEAD
-class LLVM_LIBRARY_VISIBILITY Linux : public ToolChain {
-=======
 class LLVM_LIBRARY_VISIBILITY GenericUnix : public ToolChain {
->>>>>>> refs/remotes/apple/master
 protected:
   InvocationInfo constructInvocation(const InterpretJobAction &job,
                                      const JobContext &context) const override;

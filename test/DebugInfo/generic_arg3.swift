@@ -8,11 +8,7 @@ public func f<Type>(value : Type)
   // CHECK: store %swift.opaque* %1, %swift.opaque** %[[ALLOCA:.*]], align
   // CHECK: call void @llvm.dbg.declare(metadata %swift.opaque** %[[ALLOCA]],
   // CHECK-SAME:       metadata ![[ARG:.*]], metadata ![[EXPR:.*]])
-<<<<<<< HEAD
-  // A generic argument is implictly indirect and should not be dereferenced.
-=======
   // No deref here: The argument is an Archetype and this implicitly indirect.
->>>>>>> refs/remotes/apple/master
   // CHECK: ![[EXPR]] = !DIExpression()
   // CHECK: ![[ARG]] = !DILocalVariable(name: "arg", arg: 1,
   // CHECK-SAME:     line: [[@LINE+1]], type: !"_TtQq_F12generic_arg31furFxT_")

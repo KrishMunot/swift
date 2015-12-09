@@ -797,67 +797,6 @@ bb0(%0 : $ErrorClass):
 }
 
 // CHECK-LABEL: CG of test_raw_pointer_to_ref
-<<<<<<< HEAD
-// CHECK-NEXT:    Arg %0 Esc: A, Succ: 
-// CHECK-NEXT:    Ret  Esc: R, Succ: %0
-// CHECK-NEXT:  End
-sil @test_raw_pointer_to_ref : $@convention(thin) (@owned X) -> @owned X {
-bb0(%0 : $X):
-  %1 = ref_to_raw_pointer %0 : $X to $Builtin.RawPointer
-  %2 = raw_pointer_to_ref %1 : $Builtin.RawPointer to $X
-  return %2 : $X
-}
-
-// CHECK-LABEL: CG of test_bridge_object_to_ref
-// CHECK-NEXT:    Arg %0 Esc: A, Succ: 
-// CHECK-NEXT:    Ret  Esc: R, Succ: %0
-// CHECK-NEXT:  End
-sil @test_bridge_object_to_ref : $@convention(thin) (@owned X, Builtin.Word) -> @owned X {
-bb0(%0 : $X, %1 : $Builtin.Word):
-  %2 = ref_to_bridge_object %0 : $X, %1 : $Builtin.Word
-  %3 = bridge_object_to_ref %2 : $Builtin.BridgeObject to $X
-  return %3 : $X
-}
-
-// CHECK-LABEL: CG of test_address_to_pointer
-// CHECK-NEXT:    Arg %0 Esc: A, Succ: (%0.1)
-// CHECK-NEXT:    Con %0.1 Esc: A, Succ: %1
-// CHECK-NEXT:    Arg %1 Esc: A, Succ: 
-// CHECK-NEXT:  End
-sil @test_address_to_pointer : $@convention(thin) (@out X, @owned X) -> () {
-bb0(%0 : $*X, %1 : $X):
-  %2 = address_to_pointer %0 : $*X to $Builtin.RawPointer
-  %3 = pointer_to_address %2 : $Builtin.RawPointer to $*X
-  store %1 to %3 : $*X
-  %7 = tuple ()
-  return %7 : $()
-}
-
-// CHECK-LABEL: CG of test_casts
-// CHECK-NEXT:    Arg %0 Esc: A, Succ: 
-// CHECK-NEXT:    Ret  Esc: R, Succ: %0
-// CHECK-NEXT:  End
-sil @test_casts : $@convention(thin) (@owned AnyObject) -> @owned X {
-bb0(%0 : $AnyObject):
-  %1 = unchecked_ref_cast %0 : $AnyObject to $Derived
-  %2 = upcast %1 : $Derived to $X
-  return %2 : $X
-}
-
-// CHECK-LABEL: CG of test_unchecked_ref_cast_addr
-// CHECK-NEXT:    Arg %0 Esc: A, Succ: %1
-// CHECK-NEXT:    Arg %1 Esc: A, Succ: 
-// CHECK-NEXT:  End
-sil @test_unchecked_ref_cast_addr : $@convention(thin) <T, U> (@out U, @in T, @thick U.Type) -> () {
-bb0(%0 : $*U, %1 : $*T, %2 : $@thick U.Type):
-  unchecked_ref_cast_addr  T in %1 : $*T to U in %0 : $*U
-  %5 = tuple ()
-  return %5 : $()
-}
-
-// CHECK-LABEL: CG of arraysemantics_is_native
-=======
->>>>>>> refs/remotes/apple/master
 // CHECK-NEXT:    Arg %0 Esc: A, Succ: 
 // CHECK-NEXT:    Ret  Esc: R, Succ: %0
 // CHECK-NEXT:  End

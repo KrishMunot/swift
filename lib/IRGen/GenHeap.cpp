@@ -996,19 +996,10 @@ DEFINE_BINARY_OPERATION(UnownedAssign, void, llvm::Value *, Address)
 DEFINE_BINARY_OPERATION(UnownedLoadStrong, llvm::Value *, Address, llvm::Type *)
 DEFINE_BINARY_OPERATION(UnownedTakeStrong, llvm::Value *, Address, llvm::Type *)
 DEFINE_UNARY_OPERATION(UnownedDestroy, void, Address)
-<<<<<<< HEAD
-DEFINE_UNARY_OPERATION(StrongRetainUnowned, void, llvm::Value *)
-DEFINE_UNARY_OPERATION(StrongRetainAndUnownedRelease, void, llvm::Value *)
-DEFINE_UNARY_OPERATION(UnownedRetain, void, llvm::Value *)
-DEFINE_UNARY_OPERATION(UnownedRelease, void, llvm::Value *)
-=======
->>>>>>> refs/remotes/apple/master
 
 #undef DEFINE_UNARY_OPERATION
 #undef DEFINE_BINARY_OPERATION
 
-<<<<<<< HEAD
-=======
 void IRGenFunction::emitUnownedRetain(llvm::Value *value,
                                       ReferenceCounting style) {
   assert(style == ReferenceCounting::Native &&
@@ -1037,7 +1028,6 @@ void IRGenFunction::emitStrongRetainAndUnownedRelease(llvm::Value *value,
   emitNativeStrongRetainAndUnownedRelease(value);
 }
 
->>>>>>> refs/remotes/apple/master
 /// Emit a release of a live value.
 void IRGenFunction::emitNativeStrongRelease(llvm::Value *value) {
   if (doesNotRequireRefCounting(value)) return;
@@ -1046,20 +1036,14 @@ void IRGenFunction::emitNativeStrongRelease(llvm::Value *value) {
 
 void IRGenFunction::emitNativeUnownedInit(llvm::Value *value,
                                           Address dest) {
-<<<<<<< HEAD
-=======
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   Builder.CreateStore(value, dest);
   emitNativeUnownedRetain(value);
 }
 
 void IRGenFunction::emitNativeUnownedAssign(llvm::Value *value,
                                             Address dest) {
-<<<<<<< HEAD
-=======
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   auto oldValue = Builder.CreateLoad(dest);
   Builder.CreateStore(value, dest);
   emitNativeUnownedRetain(value);
@@ -1068,10 +1052,7 @@ void IRGenFunction::emitNativeUnownedAssign(llvm::Value *value,
 
 llvm::Value *IRGenFunction::emitNativeUnownedLoadStrong(Address src,
                                                         llvm::Type *type) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *value = Builder.CreateLoad(src);
   value = Builder.CreateBitCast(value, type);
   emitNativeStrongRetainUnowned(value);
@@ -1080,10 +1061,7 @@ llvm::Value *IRGenFunction::emitNativeUnownedLoadStrong(Address src,
 
 llvm::Value *IRGenFunction::emitNativeUnownedTakeStrong(Address src,
                                                         llvm::Type *type) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *value = Builder.CreateLoad(src);
   value = Builder.CreateBitCast(value, type);
   emitNativeStrongRetainAndUnownedRelease(value);
@@ -1091,41 +1069,29 @@ llvm::Value *IRGenFunction::emitNativeUnownedTakeStrong(Address src,
 }
 
 void IRGenFunction::emitNativeUnownedDestroy(Address ref) {
-<<<<<<< HEAD
-=======
   ref = Builder.CreateStructGEP(ref, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *value = Builder.CreateLoad(ref);
   emitNativeUnownedRelease(value);
 }
 
 void IRGenFunction::emitNativeUnownedCopyInit(Address dest, Address src) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *newValue = Builder.CreateLoad(src);
   Builder.CreateStore(newValue, dest);
   emitNativeUnownedRetain(newValue);
 }
 
 void IRGenFunction::emitNativeUnownedTakeInit(Address dest, Address src) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *newValue = Builder.CreateLoad(src);
   Builder.CreateStore(newValue, dest);
 }
 
 void IRGenFunction::emitNativeUnownedCopyAssign(Address dest, Address src) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *newValue = Builder.CreateLoad(src);
   llvm::Value *oldValue = Builder.CreateLoad(dest);
   Builder.CreateStore(newValue, dest);
@@ -1134,11 +1100,8 @@ void IRGenFunction::emitNativeUnownedCopyAssign(Address dest, Address src) {
 }
 
 void IRGenFunction::emitNativeUnownedTakeAssign(Address dest, Address src) {
-<<<<<<< HEAD
-=======
   src = Builder.CreateStructGEP(src, 0, Size(0));
   dest = Builder.CreateStructGEP(dest, 0, Size(0));
->>>>>>> refs/remotes/apple/master
   llvm::Value *newValue = Builder.CreateLoad(src);
   llvm::Value *oldValue = Builder.CreateLoad(dest);
   Builder.CreateStore(newValue, dest);
@@ -1162,15 +1125,6 @@ void IRGenFunction::emitUnknownStrongRelease(llvm::Value *value) {
   emitUnaryRefCountCall(*this, IGM.getUnknownReleaseFn(), value);
 }
 
-<<<<<<< HEAD
-// FIXME: irrevocably broken
-void IRGenFunction::emitUnknownStrongRetainAndUnownedRelease(llvm::Value *ref) {
-  emitUnknownStrongRetain(ref);
-  emitUnknownUnownedRelease(ref);
-}
-
-=======
->>>>>>> refs/remotes/apple/master
 void IRGenFunction::emitBridgeStrongRetain(llvm::Value *value) {
   emitUnaryRefCountCall(*this, IGM.getBridgeObjectStrongRetainFn(), value);
 }
@@ -1529,12 +1483,6 @@ DEFINE_COPY_OP(NativeWeakCopyInit)
 DEFINE_COPY_OP(NativeWeakCopyAssign)
 DEFINE_COPY_OP(NativeWeakTakeInit)
 DEFINE_COPY_OP(NativeWeakTakeAssign)
-<<<<<<< HEAD
-DEFINE_VALUE_OP(UnknownStrongRetainUnowned) // FIXME: irrevocably broken
-DEFINE_VALUE_OP(UnknownUnownedRelease)      // FIXME: irrevocably broken
-DEFINE_VALUE_OP(UnknownUnownedRetain)       // FIXME: irrevocably broken
-=======
->>>>>>> refs/remotes/apple/master
 DEFINE_LOAD_WEAK_OP(UnknownUnownedLoadStrong)
 DEFINE_LOAD_WEAK_OP(UnknownUnownedTakeStrong)
 DEFINE_STORE_WEAK_OP(UnknownUnownedInit)

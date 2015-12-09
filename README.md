@@ -79,11 +79,7 @@ For those checking out sources as read-only:
      git clone https://github.com/apple/swift-corelibs-xctest.git
      git clone https://github.com/apple/swift-corelibs-foundation.git
 
-<<<<<<< HEAD
-For those who plan on regular making direct commits, cloning over
-=======
 For those who plan on regularly making direct commits, cloning over
->>>>>>> refs/remotes/apple/master
 SSH may provide a better experience (which requires uploading 
 SSH keys to GitHub):
 
@@ -180,4 +176,4 @@ Swift community welcoming to everyone.
 To give clarity of what is expected of our members, Swift has adopted the
 code of conduct defined by the Contributor Covenant. This document is used
 across many open source communities, and we think it articulates our values
-well. For more, see the [code of conduct](https://swift.org/community/#code-of-conduct) on Swift.org.
+well. For more, see [the website](https://swift.org/community/#code-of-conduct).

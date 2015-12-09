@@ -17,11 +17,7 @@ namespace swift {
 
 class ValueBase;
 
-<<<<<<< HEAD
-/// A protocol (or inferface) for handling value deletion notifications.
-=======
 /// A protocol (or interface) for handling value deletion notifications.
->>>>>>> refs/remotes/apple/master
 ///
 /// This class is used as a base class for any class that need to accept
 /// instruction deletion notification messages. This is used by passes and
@@ -34,15 +30,12 @@ struct DeleteNotificationHandler {
 
   /// Handle the invalidation message for the value \p Value.
   virtual void handleDeleteNotification(swift::ValueBase *Value) { }
-<<<<<<< HEAD
-=======
 
   /// Returns True if the pass, analysis or other entity wants to receive
   /// notifications. This callback is called once when the class is being
   /// registered, and not once per notification. Entities that implement
   /// this callback should always return a constant answer (true/false).
   virtual bool needsNotifications() { return false; }
->>>>>>> refs/remotes/apple/master
 };
 
 } // end swift namespace

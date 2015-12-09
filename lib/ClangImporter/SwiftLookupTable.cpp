@@ -29,18 +29,13 @@
 #include "llvm/Bitcode/RecordLayout.h"
 #include "llvm/Support/OnDiskHashTable.h"
 
-<<<<<<< HEAD
-=======
 using namespace swift;
 using namespace llvm::support;
 
->>>>>>> refs/remotes/apple/master
 /// Determine whether the new declarations matches an existing declaration.
 static bool matchesExistingDecl(clang::Decl *decl, clang::Decl *existingDecl) {
   // If the canonical declarations are equivalent, we have a match.
   if (decl->getCanonicalDecl() == existingDecl->getCanonicalDecl()) {
-<<<<<<< HEAD
-=======
     return true;
   }
 
@@ -52,7 +47,6 @@ bool SwiftLookupTable::contextRequiresName(ContextKind kind) {
   case ContextKind::ObjCClass:
   case ContextKind::ObjCProtocol:
   case ContextKind::Tag:
->>>>>>> refs/remotes/apple/master
     return true;
 
   case ContextKind::TranslationUnit:
@@ -86,66 +80,20 @@ SwiftLookupTable::translateContext(clang::DeclContext *context) {
   return None;
 }
 
-Optional<std::pair<SwiftLookupTable::ContextKind, StringRef>>
-SwiftLookupTable::translateContext(clang::DeclContext *context) {
-  // Translation unit context.
-  if (context->isTranslationUnit())
-    return std::make_pair(ContextKind::TranslationUnit, StringRef());
-
-  // Tag declaration context.
-  if (auto tag = dyn_cast<clang::TagDecl>(context)) {
-    if (tag->getIdentifier())
-      return std::make_pair(ContextKind::Tag, tag->getName());
-    if (auto typedefDecl = tag->getTypedefNameForAnonDecl())
-      return std::make_pair(ContextKind::Tag, typedefDecl->getName());
-    return None;
-  }
-
-  // Objective-C class context.
-  if (auto objcClass = dyn_cast<clang::ObjCInterfaceDecl>(context))
-    return std::make_pair(ContextKind::ObjCClass, objcClass->getName());
-
-  // Objective-C protocol context.
-  if (auto objcProtocol = dyn_cast<clang::ObjCProtocolDecl>(context))
-    return std::make_pair(ContextKind::ObjCProtocol, objcProtocol->getName());
-
-  return None;
-}
-
 void SwiftLookupTable::addEntry(DeclName name, clang::NamedDecl *decl,
                                 clang::DeclContext *effectiveContext) {
-<<<<<<< HEAD
-=======
   assert(!Reader && "Cannot modify a lookup table stored on disk");
 
->>>>>>> refs/remotes/apple/master
   // Translate the context.
   auto contextOpt = translateContext(effectiveContext);
   if (!contextOpt) return;
   auto context = *contextOpt;
 
-<<<<<<< HEAD
-  // First, check whether there is already a full name entry.
-  auto knownFull = FullNameTable.find(name);
-  if (knownFull == FullNameTable.end()) {
-    // We didn't have a full name entry, so record that in the base
-    // name table.
-    BaseNameTable[name.getBaseName()].push_back(name);
-
-    // Insert the entry into the full name table. We're done.
-    FullTableEntry newEntry;
-    newEntry.Context = context;
-    newEntry.Decls.push_back(decl);
-    (void)FullNameTable.insert({name, { newEntry }});
-    return;
-  }
-=======
   // Find the list of entries for this base name.
   auto &entries = LookupTable[name.getBaseName().str()];
   for (auto &entry : entries) {
     if (entry.Context == context) {
       // We have entries for this context.
->>>>>>> refs/remotes/apple/master
 
       // Check whether this entry matches any existing entry.
       for (auto &existingEntry : entry.Decls) {
@@ -161,10 +109,6 @@ void SwiftLookupTable::addEntry(DeclName name, clang::NamedDecl *decl,
   // This is a new context for this name. Add it.
   FullTableEntry newEntry;
   newEntry.Context = context;;
-<<<<<<< HEAD
-  newEntry.Decls.push_back(decl);
-  fullEntries.push_back(newEntry);
-=======
   newEntry.Decls.push_back(reinterpret_cast<uintptr_t>(decl));
   entries.push_back(newEntry);
 }
@@ -209,7 +153,6 @@ SwiftLookupTable::lookup(StringRef baseName,
   }
 
   return result;
->>>>>>> refs/remotes/apple/master
 }
 
 static void printName(clang::NamedDecl *named, llvm::raw_ostream &out) {
@@ -280,42 +223,11 @@ void SwiftLookupTable::dump() const {
   llvm::array_pod_sort(baseNames.begin(), baseNames.end());
   llvm::errs() << "Base name -> entry mappings:\n";
   for (auto baseName : baseNames) {
-<<<<<<< HEAD
-    llvm::errs() << "  " << baseName.str() << " --> ";
-    const auto &fullNames = BaseNameTable.find(baseName)->second;
-    interleave(fullNames.begin(), fullNames.end(),
-               [](DeclName fullName) {
-                 llvm::errs() << fullName;
-               },
-               [] {
-                 llvm::errs() << ", ";
-               });
-    llvm::errs() << "\n";
-  }
-  llvm::errs() << "\n";
-
-  // Dump the full name -> full table entry mappings.
-  SmallVector<DeclName, 4> fullNames;
-  for (const auto &entry : FullNameTable) {
-    fullNames.push_back(entry.first);
-  }
-  std::sort(fullNames.begin(), fullNames.end(),
-            [](DeclName x, DeclName y) {
-              return x.compare(y) < 0;
-            });
-  llvm::errs() << "Full name -> entry mappings:\n";
-  for (auto fullName : fullNames) {
-    llvm::errs() << "  " << fullName << ":\n";
-    const auto &fullEntries = FullNameTable.find(fullName)->second;
-    for (const auto &fullEntry : fullEntries) {
-      switch (fullEntry.Context.first) {
-=======
     llvm::errs() << "  " << baseName << ":\n";
     const auto &entries = LookupTable.find(baseName)->second;
     for (const auto &entry : entries) {
       llvm::errs() << "    ";
       switch (entry.Context.first) {
->>>>>>> refs/remotes/apple/master
       case ContextKind::TranslationUnit:
         llvm::errs() << "TU";
         break;
@@ -323,11 +235,7 @@ void SwiftLookupTable::dump() const {
       case ContextKind::Tag:
       case ContextKind::ObjCClass:
       case ContextKind::ObjCProtocol:
-<<<<<<< HEAD
-        llvm::errs() << fullEntry.Context.second;
-=======
         llvm::errs() << entry.Context.second;
->>>>>>> refs/remotes/apple/master
       }
       llvm::errs() << ": ";
 

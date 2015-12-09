@@ -1018,14 +1018,7 @@ void IRGenDebugInfo::emitVariableDeclaration(
   if (Artificial || DITy->isArtificial() || DITy == InternalType)
     Flags |= llvm::DINode::FlagArtificial;
 
-<<<<<<< HEAD
-  // LValues, inout args, and Archetypes are implicitly indirect by
-  // virtue of their DWARF type.
-  if (DbgTy.getType()->getKind() == TypeKind::InOut ||
-      DbgTy.getType()->hasArchetype())
-=======
   if (isImplicitlyIndirect(DbgTy.getType()))
->>>>>>> refs/remotes/apple/master
     Indirection = DirectValue;
 
   // Create the descriptor for the variable.

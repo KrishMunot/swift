@@ -128,17 +128,12 @@ private:
   /// Returns True if memory of type \p T1 and \p T2 may alias.
   bool typesMayAlias(SILType T1, SILType T2);
 
-<<<<<<< HEAD
-
-  virtual void handleDeleteNotification(ValueBase *I) override { }
-=======
   virtual void handleDeleteNotification(ValueBase *I) override {
     // The pointer I is going away.  We can't scan the whole cache and remove
     // all of the occurrences of the pointer. Instead we remove the pointer
     // from the cache the translates pointers to indices.
     ValueBaseToIndex.invalidateValue(I);
   }
->>>>>>> refs/remotes/apple/master
 
   virtual bool needsNotifications() override { return true; }
 

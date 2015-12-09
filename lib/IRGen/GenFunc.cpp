@@ -536,21 +536,6 @@ namespace {
       IGF.emitNativeStrongRelease(e.claimNext());
     }
 
-<<<<<<< HEAD
-    void retainUnowned(IRGenFunction &IGF, Explosion &e) const override {
-      e.claimNext();
-      IGF.emitNativeStrongRetainUnowned(e.claimNext());
-    }
-    
-    void unownedRetain(IRGenFunction &IGF, Explosion &e) const override {
-      e.claimNext();
-      IGF.emitNativeUnownedRetain(e.claimNext());
-    }
-
-    void unownedRelease(IRGenFunction &IGF, Explosion &e) const override {
-      e.claimNext();
-      IGF.emitNativeUnownedRelease(e.claimNext());
-=======
     void strongRetainUnowned(IRGenFunction &IGF, Explosion &e) const override {
       llvm_unreachable("unowned references to functions are not supported");
     }
@@ -586,7 +571,6 @@ namespace {
     void unownedAssign(IRGenFunction &IGF, Explosion &in,
                        Address dest) const override {
       llvm_unreachable("unowned references to functions are not supported");
->>>>>>> refs/remotes/apple/master
     }
 
     void destroy(IRGenFunction &IGF, Address addr, SILType T) const override {

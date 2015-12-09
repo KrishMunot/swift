@@ -538,15 +538,6 @@ bool SILPerformanceInliner::hasInliningCycle(SILFunction *Caller,
   return InlinedBefore;
 }
 
-<<<<<<< HEAD
-
-static bool calleeIsSelfRecursive(SILFunction *Callee) {
-  for (auto &BB : *Callee)
-    for (auto &I : BB)
-      if (auto Apply = FullApplySite::isa(&I))
-        if (Apply.getCalleeFunction() == Callee)
-          return true;
-=======
 // Return true if the callee does few (or no) self-recursive calls.
 static bool calleeHasMinimalSelfRecursion(SILFunction *Callee) {
   int countSelfRecursiveCalls = 0;
@@ -563,7 +554,6 @@ static bool calleeHasMinimalSelfRecursion(SILFunction *Callee) {
     }
   }
 
->>>>>>> refs/remotes/apple/master
   return false;
 }
 
@@ -652,18 +642,11 @@ SILFunction *SILPerformanceInliner::getEligibleFunction(FullApplySite AI) {
 
   // Inlining self-recursive functions into other functions can result
   // in excessive code duplication since we run the inliner multiple
-<<<<<<< HEAD
-  // times in our pipeline.
-  if (calleeIsSelfRecursive(Callee)) {
-    DEBUG(llvm::dbgs() << "        FAIL: Callee is self-recursive in " <<
-          Callee->getName() << ".\n");
-=======
   // times in our pipeline, so we only do it for callees with few
   // self-recursive calls.
   if (calleeHasMinimalSelfRecursion(Callee)) {
     DEBUG(llvm::dbgs() << "        FAIL: Callee is self-recursive in "
                        << Callee->getName() << ".\n");
->>>>>>> refs/remotes/apple/master
     return nullptr;
   }
 

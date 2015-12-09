@@ -100,25 +100,9 @@ public:
     IGF.emitStrongRetain(value, asDerived().getReferenceCounting());
   }
 
-<<<<<<< HEAD
-  void emitScalarRetainUnowned(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitStrongRetainUnowned(value, asDerived().getReferenceCounting());
-  }
-
-  void emitScalarUnownedRelease(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitUnownedRelease(value, asDerived().getReferenceCounting());
-  }
-
-  void emitScalarUnownedRetain(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitUnownedRetain(value, asDerived().getReferenceCounting());
-  }
-
-  void retain(IRGenFunction &IGF, Explosion &e) const override {
-=======
   // Implement the primary retain/release operations of ReferenceTypeInfo
   // using basic reference counting.
   void strongRetain(IRGenFunction &IGF, Explosion &e) const override {
->>>>>>> refs/remotes/apple/master
     llvm::Value *value = e.claimNext();
     asDerived().emitScalarRetain(IGF, value);
   }

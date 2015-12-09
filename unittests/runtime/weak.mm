@@ -394,17 +394,6 @@ TEST(WeakTest, objc_unowned_takeStrong) {
   swift_unknownRelease(swift1);
 }
 
-<<<<<<< HEAD
-  swift_unknownUnownedRetain(o);
-  // strong 1, unowned 1
-
-  swift_unknownRelease(o);
-  // strong 0, unowned 1 -- object gets greedily deallocated by ObjC runtime
-  ASSERT_EQ(1U, DestroyedObjCCount);
-  
-  swift_unknownUnownedRelease(o);
-  // strong 0, unowned 0
-=======
 TEST(WeakTest, objc_unowned_copyInit_nil) {
   UnownedReference ref1;
   UnownedReference ref2;
@@ -849,5 +838,4 @@ TEST(WeakTest, objc_unowned_takeAssign) {
   swift_unknownRelease(objc2);
   swift_unknownRelease(swift1);
   swift_unknownRelease(swift2);
->>>>>>> refs/remotes/apple/master
 }

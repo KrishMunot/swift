@@ -399,11 +399,7 @@ public:
                       SILType T) const override {
     Address destValue = projectValue(IGF, dest);
     Address srcValue = projectValue(IGF, src);
-<<<<<<< HEAD
-    IGF.emitWeakCopyAssign(destValue, srcValue, Refcounting);
-=======
     asDerived().emitValueAssignWithCopy(IGF, destValue, srcValue);
->>>>>>> refs/remotes/apple/master
     emitCopyOfTables(IGF, dest, src);
   }
 
@@ -412,11 +408,7 @@ public:
                           SILType T) const override {
     Address destValue = projectValue(IGF, dest);
     Address srcValue = projectValue(IGF, src);
-<<<<<<< HEAD
-    IGF.emitWeakCopyInit(destValue, srcValue, Refcounting);
-=======
     asDerived().emitValueInitializeWithCopy(IGF, destValue, srcValue);
->>>>>>> refs/remotes/apple/master
     emitCopyOfTables(IGF, dest, src);
   }
 
@@ -425,11 +417,7 @@ public:
                       SILType T) const override {
     Address destValue = projectValue(IGF, dest);
     Address srcValue = projectValue(IGF, src);
-<<<<<<< HEAD
-    IGF.emitWeakTakeAssign(destValue, srcValue, Refcounting);
-=======
     asDerived().emitValueAssignWithTake(IGF, destValue, srcValue);
->>>>>>> refs/remotes/apple/master
     emitCopyOfTables(IGF, dest, src);
   }
 
@@ -438,22 +426,14 @@ public:
                           SILType T) const override {
     Address destValue = projectValue(IGF, dest);
     Address srcValue = projectValue(IGF, src);
-<<<<<<< HEAD
-    IGF.emitWeakTakeInit(destValue, srcValue, Refcounting);
-=======
     asDerived().emitValueInitializeWithTake(IGF, destValue, srcValue);
->>>>>>> refs/remotes/apple/master
     emitCopyOfTables(IGF, dest, src);
   }
 
   void destroy(IRGenFunction &IGF, Address existential,
                SILType T) const override {
     Address valueAddr = projectValue(IGF, existential);
-<<<<<<< HEAD
-    IGF.emitWeakDestroy(valueAddr, Refcounting);
-=======
     asDerived().emitValueDestroy(IGF, valueAddr);
->>>>>>> refs/remotes/apple/master
   }
 
   /// Given an explosion with multiple pointer elements in them, pack them
@@ -578,8 +558,6 @@ public:
     emitStoreOfTables(IGF, temp, existential);
     Address valueAddr = projectValue(IGF, existential);
     IGF.emitWeakAssign(value, valueAddr, Refcounting);
-<<<<<<< HEAD
-=======
   }
 };
 
@@ -623,7 +601,6 @@ public:
 
   void emitValueDestroy(IRGenFunction &IGF, Address addr) const {
     IGF.emitUnownedDestroy(addr, Refcounting);
->>>>>>> refs/remotes/apple/master
   }
 };
 
@@ -916,13 +893,6 @@ public:
       return IGM.getUnknownObjectTypeInfo();
   }
 
-<<<<<<< HEAD
-  void emitPayloadRetain(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitUnownedRetain(value, Refcounting);
-  }
-
-  void emitPayloadRelease(IRGenFunction &IGF, llvm::Value *value) const {
-=======
   llvm::Type *getValueType() const {
     return ValueType;
   }
@@ -937,7 +907,6 @@ public:
   }
 
   void emitValueRelease(IRGenFunction &IGF, llvm::Value *value) const {
->>>>>>> refs/remotes/apple/master
     IGF.emitUnownedRelease(value, Refcounting);
   }
 
@@ -1020,28 +989,16 @@ public:
       return IGM.getUnknownObjectTypeInfo();
   }
 
-<<<<<<< HEAD
-  void retain(IRGenFunction &IGF, Explosion &e) const override {
-=======
   void strongRetain(IRGenFunction &IGF, Explosion &e) const override {
->>>>>>> refs/remotes/apple/master
     IGF.emitStrongRetain(e.claimNext(), Refcounting);
     e.claim(getNumStoredProtocols());
   }
 
-<<<<<<< HEAD
-  void release(IRGenFunction &IGF, Explosion &e) const override {
-=======
   void strongRelease(IRGenFunction &IGF, Explosion &e) const override {
->>>>>>> refs/remotes/apple/master
     IGF.emitStrongRelease(e.claimNext(), Refcounting);
     e.claim(getNumStoredProtocols());
   }
 
-<<<<<<< HEAD
-  void retainUnowned(IRGenFunction &IGF, Explosion &e) const override {
-    IGF.emitStrongRetainUnowned(e.claimNext(), Refcounting);
-=======
   void strongRetainUnowned(IRGenFunction &IGF, Explosion &e) const override {
     IGF.emitStrongRetainUnowned(e.claimNext(), Refcounting);
     e.claim(getNumStoredProtocols());
@@ -1050,7 +1007,6 @@ public:
   void strongRetainUnownedRelease(IRGenFunction &IGF,
                                   Explosion &e) const override {
     IGF.emitStrongRetainAndUnownedRelease(e.claimNext(), Refcounting);
->>>>>>> refs/remotes/apple/master
     e.claim(getNumStoredProtocols());
   }
 
@@ -1064,14 +1020,6 @@ public:
     e.claim(getNumStoredProtocols());
   }
 
-<<<<<<< HEAD
-  void emitPayloadRetain(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitStrongRetain(value, Refcounting);
-  }
-
-  void emitPayloadRelease(IRGenFunction &IGF, llvm::Value *value) const {
-    IGF.emitStrongRelease(value, Refcounting);
-=======
   void unownedLoadStrong(IRGenFunction &IGF, Address existential,
                          Explosion &out) const override {
     Address valueAddr = projectValue(IGF, existential);
@@ -1088,7 +1036,6 @@ public:
                                       IGF.IGM.getReferenceType(Refcounting),
                                       Refcounting));
     emitLoadOfTables(IGF, existential, out);
->>>>>>> refs/remotes/apple/master
   }
 
   void unownedInit(IRGenFunction &IGF, Explosion &in,

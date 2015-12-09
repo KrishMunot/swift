@@ -24,16 +24,12 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
-<<<<<<< HEAD
-#include <utility>
-=======
 #include <functional>
 #include <utility>
 
 namespace llvm {
 class BitstreamWriter;
 }
->>>>>>> refs/remotes/apple/master
 
 namespace clang {
 class NamedDecl;
@@ -77,12 +73,9 @@ public:
     ObjCProtocol,
   };
 
-<<<<<<< HEAD
-=======
   /// Determine whether the given context requires a name to disambiguate.
   static bool contextRequiresName(ContextKind kind);
 
->>>>>>> refs/remotes/apple/master
   /// An entry in the table of C entities indexed by full Swift name.
   struct FullTableEntry {
     /// The context in which the entities with the given name occur, e.g.,
@@ -100,11 +93,7 @@ public:
   };
 
 private:
-<<<<<<< HEAD
-  /// A table mapping from the full name of Swift entities to all of
-=======
   /// A table mapping from the base name of Swift entities to all of
->>>>>>> refs/remotes/apple/master
   /// the C entities that have that name, in all contexts.
   llvm::DenseMap<StringRef, SmallVector<FullTableEntry, 2>> LookupTable;
 
@@ -115,14 +104,11 @@ private:
   friend class SwiftLookupTableWriter;
 
 public:
-<<<<<<< HEAD
-=======
   explicit SwiftLookupTable(SwiftLookupTableReader *reader) : Reader(reader) { }
 
   /// Maps a stored declaration entry to an actual Clang declaration.
   clang::NamedDecl *mapStoredDecl(uint64_t &entry);
 
->>>>>>> refs/remotes/apple/master
   /// Translate a Clang DeclContext into a context kind and name.
   llvm::Optional<std::pair<ContextKind, StringRef>>
   translateContext(clang::DeclContext *context);
