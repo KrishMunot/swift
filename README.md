@@ -1,9 +1,10 @@
+<img src="https://swift.org/assets/images/swift.svg" alt="Swift logo" height="70" >
 # Swift Programming Language
 
 **Welcome to Swift!**
 
 Swift is a high-performance system programming language.  It has a clean
-and modern syntax, and offers seamless access to existing C and Objective-C code
+and modern syntax, offers seamless access to existing C and Objective-C code
 and frameworks, and is memory safe (by default).
 
 Although inspired by Objective-C and many other languages, Swift is not itself a
@@ -66,7 +67,7 @@ compiler for C++14 support and create a symlink:
 
 ### Getting Sources for Swift and Related Projects
 
-	For those checking out sources as read-only:
+For those checking out sources as read-only:
 
      git clone https://github.com/apple/swift.git swift
      git clone https://github.com/apple/swift-llvm.git llvm
@@ -78,9 +79,9 @@ compiler for C++14 support and create a symlink:
      git clone https://github.com/apple/swift-corelibs-xctest.git
      git clone https://github.com/apple/swift-corelibs-foundation.git
 
-	For those who plan on regular making direct commits, cloning over
-	SSH may provide a better experience (which requires uploading 
-	SSH keys to GitHub):
+For those who plan on regular making direct commits, cloning over
+SSH may provide a better experience (which requires uploading 
+SSH keys to GitHub):
 
      git clone git@github.com:apple/swift.git swift
      git clone git@github.com:apple/swift-llvm.git llvm
