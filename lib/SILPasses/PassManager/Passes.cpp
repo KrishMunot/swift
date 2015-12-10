@@ -218,7 +218,6 @@ void AddSSAPasses(SILPassManager &PM, OptimizationLevelKind OpLevel) {
     PM.addEarlyCodeMotion();
   PM.addARCSequenceOpts();
   PM.addRemovePins();
-  PM.addUpdateSideEffects();
 }
 
 
@@ -254,7 +253,6 @@ void swift::runSILOptimizationPasses(SILModule &Module) {
   PM.addDeadFunctionElimination();
   PM.addDeadObjectElimination();
   PM.addGlobalPropertyOpt();
-  PM.addUpdateEscapeAnalysis();
 
   // Do the first stack promotion on high-level SIL.
   PM.addStackPromotion();
@@ -289,8 +287,6 @@ void swift::runSILOptimizationPasses(SILModule &Module) {
 
   // Specialize closure.
   PM.addClosureSpecializer();
-
-  PM.addUpdateEscapeAnalysis();
 
   // Do the second stack promotion on low-level SIL.
   PM.addStackPromotion();
