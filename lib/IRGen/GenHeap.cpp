@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -24,6 +24,7 @@
 #include "swift/Basic/Fallthrough.h"
 #include "swift/Basic/SourceLoc.h"
 #include "swift/ABI/MetadataValues.h"
+#include "swift/AST/IRGenOptions.h"
 
 #include "Explosion.h"
 #include "GenProto.h"
@@ -405,11 +406,13 @@ namespace {
       return IGF.Builder.CreateBitCast(addr, ValueType->getPointerTo());
     }
 
-    void emitScalarRetain(IRGenFunction &IGF, llvm::Value *value) const {
+    void emitScalarRetain(IRGenFunction &IGF, llvm::Value *value,
+                          Atomicity atomicity) const {
       IGF.emitNativeUnownedRetain(value);
     }
 
-    void emitScalarRelease(IRGenFunction &IGF, llvm::Value *value) const {
+    void emitScalarRelease(IRGenFunction &IGF, llvm::Value *value,
+                           Atomicity atomicity) const {
       IGF.emitNativeUnownedRelease(value);
     }
 
@@ -816,6 +819,10 @@ static llvm::FunctionType *getTypeOfFunction(llvm::Constant *fn) {
 static void emitUnaryRefCountCall(IRGenFunction &IGF,
                                   llvm::Constant *fn,
                                   llvm::Value *value) {
+  auto cc = IGF.IGM.DefaultCC;
+  if (auto fun = dyn_cast<llvm::Function>(fn))
+    cc = fun->getCallingConv();
+
   // Instead of casting the input, we cast the function type.
   // This tends to produce less IR, but might be evil.
   if (value->getType() != getTypeOfFunction(fn)->getParamType(0)) {
@@ -826,8 +833,8 @@ static void emitUnaryRefCountCall(IRGenFunction &IGF,
   
   // Emit the call.
   llvm::CallInst *call = IGF.Builder.CreateCall(fn, value);
-  call->setCallingConv(IGF.IGM.RuntimeCC);
-  call->setDoesNotThrow();  
+  call->setCallingConv(cc);
+  call->setDoesNotThrow();
 }
 
 /// Emit a copy-like call to perform a ref-counting operation.
@@ -840,6 +847,10 @@ static void emitCopyLikeCall(IRGenFunction &IGF,
   assert(dest->getType() == src->getType() &&
          "type mismatch in binary refcounting operation");
 
+  auto cc = IGF.IGM.DefaultCC;
+  if (auto fun = dyn_cast<llvm::Function>(fn))
+    cc = fun->getCallingConv();
+
   // Instead of casting the inputs, we cast the function type.
   // This tends to produce less IR, but might be evil.
   if (dest->getType() != getTypeOfFunction(fn)->getParamType(0)) {
@@ -851,8 +862,8 @@ static void emitCopyLikeCall(IRGenFunction &IGF,
   
   // Emit the call.
   llvm::CallInst *call = IGF.Builder.CreateCall(fn, {dest, src});
-  call->setCallingConv(IGF.IGM.RuntimeCC);
-  call->setDoesNotThrow();  
+  call->setCallingConv(cc);
+  call->setDoesNotThrow();
 }
 
 /// Emit a call to a function with a loadWeak-like signature.
@@ -866,6 +877,11 @@ static llvm::Value *emitLoadWeakLikeCall(IRGenFunction &IGF,
           addr->getType() == IGF.IGM.UnownedReferencePtrTy) &&
          "address is not of a weak or unowned reference");
 
+  auto cc = IGF.IGM.DefaultCC;
+  if (auto fun = dyn_cast<llvm::Function>(fn))
+    cc = fun->getCallingConv();
+
+
   // Instead of casting the output, we cast the function type.
   // This tends to produce less IR, but might be evil.
   if (resultType != getTypeOfFunction(fn)->getReturnType()) {
@@ -877,7 +893,7 @@ static llvm::Value *emitLoadWeakLikeCall(IRGenFunction &IGF,
 
   // Emit the call.
   llvm::CallInst *call = IGF.Builder.CreateCall(fn, addr);
-  call->setCallingConv(IGF.IGM.RuntimeCC);
+  call->setCallingConv(cc);
   call->setDoesNotThrow();
 
   return call;
@@ -894,6 +910,10 @@ static void emitStoreWeakLikeCall(IRGenFunction &IGF,
           addr->getType() == IGF.IGM.UnownedReferencePtrTy) &&
          "address is not of a weak or unowned reference");
 
+  auto cc = IGF.IGM.DefaultCC;
+  if (auto fun = dyn_cast<llvm::Function>(fn))
+    cc = fun->getCallingConv();
+
   // Instead of casting the inputs, we cast the function type.
   // This tends to produce less IR, but might be evil.
   if (value->getType() != getTypeOfFunction(fn)->getParamType(1)) {
@@ -905,23 +925,25 @@ static void emitStoreWeakLikeCall(IRGenFunction &IGF,
 
   // Emit the call.
   llvm::CallInst *call = IGF.Builder.CreateCall(fn, {addr, value});
-  call->setCallingConv(IGF.IGM.RuntimeCC);
+  call->setCallingConv(cc);
   call->setDoesNotThrow();
 }
 
 /// Emit a call to swift_retain.
-void IRGenFunction::emitNativeStrongRetain(llvm::Value *value) {
+void IRGenFunction::emitNativeStrongRetain(llvm::Value *value,
+                                           Atomicity atomicity) {
   if (doesNotRequireRefCounting(value))
     return;
 
   // Make sure the input pointer is the right type.
   if (value->getType() != IGM.RefCountedPtrTy)
     value = Builder.CreateBitCast(value, IGM.RefCountedPtrTy);
-  
+
   // Emit the call.
-  llvm::CallInst *call =
-    Builder.CreateCall(IGM.getNativeStrongRetainFn(), value);
-  call->setCallingConv(IGM.RuntimeCC);
+  llvm::CallInst *call = Builder.CreateCall(
+      (atomicity == Atomicity::Atomic) ? IGM.getNativeStrongRetainFn()
+                                       : IGM.getNativeNonAtomicStrongRetainFn(),
+      value);
   call->setDoesNotThrow();
 }
 
@@ -947,31 +969,33 @@ void IRGenFunction::emitNativeStrongInit(llvm::Value *newValue,
 
 /// Emit a release of a live value with the given refcounting implementation.
 void IRGenFunction::emitStrongRelease(llvm::Value *value,
-                                      ReferenceCounting refcounting) {
+                                      ReferenceCounting refcounting,
+                                      Atomicity atomicity) {
   switch (refcounting) {
   case ReferenceCounting::Native:
-    return emitNativeStrongRelease(value);
+    return emitNativeStrongRelease(value, atomicity);
   case ReferenceCounting::ObjC:
     return emitObjCStrongRelease(value);
   case ReferenceCounting::Block:
     return emitBlockRelease(value);
   case ReferenceCounting::Unknown:
-    return emitUnknownStrongRelease(value);
+    return emitUnknownStrongRelease(value, atomicity);
   case ReferenceCounting::Bridge:
-    return emitBridgeStrongRelease(value);
+    return emitBridgeStrongRelease(value, atomicity);
   case ReferenceCounting::Error:
     return emitErrorStrongRelease(value);
   }
 }
 
 void IRGenFunction::emitStrongRetain(llvm::Value *value,
-                                     ReferenceCounting refcounting) {
+                                     ReferenceCounting refcounting,
+                                     Atomicity atomicity) {
   switch (refcounting) {
   case ReferenceCounting::Native:
-    emitNativeStrongRetain(value);
+    emitNativeStrongRetain(value, atomicity);
     return;
   case ReferenceCounting::Bridge:
-    emitBridgeStrongRetain(value);
+    emitBridgeStrongRetain(value, atomicity);
     return;
   case ReferenceCounting::ObjC:
     emitObjCStrongRetain(value);
@@ -980,7 +1004,7 @@ void IRGenFunction::emitStrongRetain(llvm::Value *value,
     emitBlockCopyCall(value);
     return;
   case ReferenceCounting::Unknown:
-    emitUnknownStrongRetain(value);
+    emitUnknownStrongRetain(value, atomicity);
     return;
   case ReferenceCounting::Error:
     emitErrorStrongRetain(value);
@@ -1090,9 +1114,19 @@ void IRGenFunction::emitStrongRetainAndUnownedRelease(llvm::Value *value,
 }
 
 /// Emit a release of a live value.
-void IRGenFunction::emitNativeStrongRelease(llvm::Value *value) {
+void IRGenFunction::emitNativeStrongRelease(llvm::Value *value,
+                                            Atomicity atomicity) {
+  if (doesNotRequireRefCounting(value))
+    return;
+  emitUnaryRefCountCall(*this, (atomicity == Atomicity::Atomic)
+                                   ? IGM.getNativeStrongReleaseFn()
+                                   : IGM.getNativeNonAtomicStrongReleaseFn(),
+                        value);
+}
+
+void IRGenFunction::emitNativeSetDeallocating(llvm::Value *value) {
   if (doesNotRequireRefCounting(value)) return;
-  emitUnaryRefCountCall(*this, IGM.getNativeStrongReleaseFn(), value);
+  emitUnaryRefCountCall(*this, IGM.getNativeSetDeallocatingFn(), value);
 }
 
 void IRGenFunction::emitNativeUnownedInit(llvm::Value *value,
@@ -1169,29 +1203,79 @@ void IRGenFunction::emitNativeUnownedTakeAssign(Address dest, Address src) {
   emitNativeUnownedRelease(oldValue);
 }
 
+llvm::Constant *IRGenModule::getFixLifetimeFn() {
+  if (FixLifetimeFn)
+    return FixLifetimeFn;
+  
+  // Generate a private stub function for the LLVM ARC optimizer to recognize.
+  auto fixLifetimeTy = llvm::FunctionType::get(VoidTy, RefCountedPtrTy,
+                                               /*isVarArg*/ false);
+  auto fixLifetime = llvm::Function::Create(fixLifetimeTy,
+                                         llvm::GlobalValue::PrivateLinkage,
+                                         "__swift_fixLifetime",
+                                         &Module);
+  assert(fixLifetime->getName().equals("__swift_fixLifetime")
+         && "fixLifetime symbol name got mangled?!");
+  // Don't inline the function, so it stays as a signal to the ARC passes.
+  // The ARC passes will remove references to the function when they're
+  // no longer needed.
+  fixLifetime->addAttribute(llvm::AttributeSet::FunctionIndex,
+                            llvm::Attribute::NoInline);
+  
+  // Give the function an empty body.
+  auto entry = llvm::BasicBlock::Create(LLVMContext, "", fixLifetime);
+  llvm::ReturnInst::Create(LLVMContext, entry);
+  
+  FixLifetimeFn = fixLifetime;
+  return fixLifetime;
+}
+
 /// Fix the lifetime of a live value. This communicates to the LLVM level ARC
 /// optimizer not to touch this value.
 void IRGenFunction::emitFixLifetime(llvm::Value *value) {
+  // If we aren't running the LLVM ARC optimizer, we don't need to emit this.
+  if (!IGM.Opts.Optimize || IGM.Opts.DisableLLVMARCOpts)
+    return;
   if (doesNotRequireRefCounting(value)) return;
   emitUnaryRefCountCall(*this, IGM.getFixLifetimeFn(), value);
 }
 
-void IRGenFunction::emitUnknownStrongRetain(llvm::Value *value) {
-  if (doesNotRequireRefCounting(value)) return;
-  emitUnaryRefCountCall(*this, IGM.getUnknownRetainFn(), value);
+void IRGenFunction::emitUnknownStrongRetain(llvm::Value *value,
+                                            Atomicity atomicity) {
+  if (doesNotRequireRefCounting(value))
+    return;
+  emitUnaryRefCountCall(*this, (atomicity == Atomicity::Atomic)
+                                   ? IGM.getUnknownRetainFn()
+                                   : IGM.getNonAtomicUnknownRetainFn(),
+                        value);
 }
 
-void IRGenFunction::emitUnknownStrongRelease(llvm::Value *value) {
-  if (doesNotRequireRefCounting(value)) return;
-  emitUnaryRefCountCall(*this, IGM.getUnknownReleaseFn(), value);
+void IRGenFunction::emitUnknownStrongRelease(llvm::Value *value,
+                                             Atomicity atomicity) {
+  if (doesNotRequireRefCounting(value))
+    return;
+  emitUnaryRefCountCall(*this, (atomicity == Atomicity::Atomic)
+                                   ? IGM.getUnknownReleaseFn()
+                                   : IGM.getNonAtomicUnknownReleaseFn(),
+                        value);
 }
 
-void IRGenFunction::emitBridgeStrongRetain(llvm::Value *value) {
-  emitUnaryRefCountCall(*this, IGM.getBridgeObjectStrongRetainFn(), value);
+void IRGenFunction::emitBridgeStrongRetain(llvm::Value *value,
+                                           Atomicity atomicity) {
+  emitUnaryRefCountCall(*this,
+                        (atomicity == Atomicity::Atomic)
+                            ? IGM.getBridgeObjectStrongRetainFn()
+                            : IGM.getNonAtomicBridgeObjectStrongRetainFn(),
+                        value);
 }
 
-void IRGenFunction::emitBridgeStrongRelease(llvm::Value *value) {
-  emitUnaryRefCountCall(*this, IGM.getBridgeObjectStrongReleaseFn(), value);
+void IRGenFunction::emitBridgeStrongRelease(llvm::Value *value,
+                                            Atomicity atomicity) {
+  emitUnaryRefCountCall(*this,
+                        (atomicity == Atomicity::Atomic)
+                            ? IGM.getBridgeObjectStrongReleaseFn()
+                            : IGM.getNonAtomicBridgeObjectStrongReleaseFn(),
+                        value);
 }
 
 void IRGenFunction::emitErrorStrongRetain(llvm::Value *value) {
@@ -1202,9 +1286,12 @@ void IRGenFunction::emitErrorStrongRelease(llvm::Value *value) {
   emitUnaryRefCountCall(*this, IGM.getErrorStrongReleaseFn(), value);
 }
 
-llvm::Value *IRGenFunction::emitNativeTryPin(llvm::Value *value) {
-  llvm::CallInst *call = Builder.CreateCall(IGM.getNativeTryPinFn(), value);
-  call->setCallingConv(IGM.RuntimeCC);
+llvm::Value *IRGenFunction::emitNativeTryPin(llvm::Value *value,
+                                             Atomicity atomicity) {
+  llvm::CallInst *call =
+      (atomicity == Atomicity::Atomic)
+          ? Builder.CreateCall(IGM.getNativeTryPinFn(), value)
+          : Builder.CreateCall(IGM.getNonAtomicNativeTryPinFn(), value);
   call->setDoesNotThrow();
 
   // Builtin.NativeObject? has representation i32/i64.
@@ -1212,12 +1299,14 @@ llvm::Value *IRGenFunction::emitNativeTryPin(llvm::Value *value) {
   return handle;
 }
 
-void IRGenFunction::emitNativeUnpin(llvm::Value *value) {
+void IRGenFunction::emitNativeUnpin(llvm::Value *value, Atomicity atomicity) {
   // Builtin.NativeObject? has representation i32/i64.
   value = Builder.CreateIntToPtr(value, IGM.RefCountedPtrTy);
 
-  llvm::CallInst *call = Builder.CreateCall(IGM.getNativeUnpinFn(), value);
-  call->setCallingConv(IGM.RuntimeCC);
+  llvm::CallInst *call =
+      (atomicity == Atomicity::Atomic)
+          ? Builder.CreateCall(IGM.getNativeUnpinFn(), value)
+          : Builder.CreateCall(IGM.getNonAtomicNativeUnpinFn(), value);
   call->setDoesNotThrow();
 }
 
@@ -1270,7 +1359,6 @@ emitIsUniqueCall(llvm::Value *value, SourceLoc loc, bool isNonNull,
     llvm_unreachable("Unexpected LLVM type for a refcounted pointer.");
   }
   llvm::CallInst *call = Builder.CreateCall(fn, value);
-  call->setCallingConv(IGM.RuntimeCC);
   call->setDoesNotThrow();
   return call;
 }
@@ -1451,14 +1539,14 @@ const TypeInfo *TypeConverter::convertBoxType(SILBoxType *T) {
   auto &fixedTI = cast<FixedTypeInfo>(eltTI);
 
   // For empty types, we don't really need to allocate anything.
-  if (fixedTI.isKnownEmpty()) {
+  if (fixedTI.isKnownEmpty(ResilienceExpansion::Maximal)) {
     if (!EmptyBoxTI)
       EmptyBoxTI = new EmptyBoxTypeInfo(IGM);
     return EmptyBoxTI;
   }
 
   // We can share box info for all similarly-shaped POD types.
-  if (fixedTI.isPOD(ResilienceScope::Component)) {
+  if (fixedTI.isPOD(ResilienceExpansion::Maximal)) {
     auto stride = fixedTI.getFixedStride();
     auto align = fixedTI.getFixedAlignment();
     auto foundPOD = PODBoxTI.find({stride.getValue(),align.getValue()});
@@ -1472,7 +1560,7 @@ const TypeInfo *TypeConverter::convertBoxType(SILBoxType *T) {
   }
 
   // We can share box info for all single-refcounted types.
-  if (fixedTI.isSingleSwiftRetainablePointer(ResilienceScope::Component)) {
+  if (fixedTI.isSingleSwiftRetainablePointer(ResilienceExpansion::Maximal)) {
     if (!SwiftRetainablePointerBoxTI)
       SwiftRetainablePointerBoxTI
         = new SingleRefcountedBoxTypeInfo(IGM, ReferenceCounting::Native);

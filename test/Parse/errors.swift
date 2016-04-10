@@ -1,6 +1,6 @@
 // RUN: %target-parse-verify-swift
 
-enum MSV : ErrorType {
+enum MSV : ErrorProtocol {
   case Foo, Bar, Baz
   case CarriesInt(Int)
 
@@ -8,7 +8,7 @@ enum MSV : ErrorType {
   var code: Int { return 0 }
 }
 
-func opaque_error() -> ErrorType { return MSV.Foo }
+func opaque_error() -> ErrorProtocol { return MSV.Foo }
 
 func one() {
   do {
@@ -37,12 +37,28 @@ func one() {
 
   do {
     throw opaque_error()
-  } catch is ErrorType {  // expected-warning {{'is' test is always true}}
+  } catch is ErrorProtocol {  // expected-warning {{'is' test is always true}}
+  }
+  
+  func foo() throws {}
+  
+  do {
+#if false
+    try foo()
+#endif
+  } catch {    // don't warn, #if code should be scanned.
+  }
+
+  do {
+#if false
+    throw opaque_error()
+#endif
+  } catch {    // don't warn, #if code should be scanned.
   }
 }
 
-func takesAutoclosure(@autoclosure fn : () -> Int) {}
-func takesThrowingAutoclosure(@autoclosure fn : () throws -> Int) {}
+func takesAutoclosure(@autoclosure _ fn : () -> Int) {}
+func takesThrowingAutoclosure(@autoclosure _ fn : () throws -> Int) {}
 
 func genError() throws -> Int { throw MSV.Foo }
 func genNoError() -> Int { return 0 }
@@ -70,7 +86,7 @@ func testAutoclosures() throws {
 struct IllegalContext {
   var x: Int = genError() // expected-error {{call can throw, but errors cannot be thrown out of a property initializer}}
 
-  func foo(x: Int = genError()) {} // expected-error {{call can throw, but errors cannot be thrown out of a default argument}}
+  func foo(_ x: Int = genError()) {} // expected-error {{call can throw, but errors cannot be thrown out of a default argument}}
 
   func catcher() throws {
     do {
@@ -94,7 +110,7 @@ func postThrows() -> Int throws { // expected-error{{'throws' may only occur bef
   return 5
 }
 
-func postRethrows(f: () throws -> Int) -> Int rethrows { // expected-error{{'rethrows' may only occur before '->'}}{{40-40=rethrows }}{{46-55=}}
+func postRethrows(_ f: () throws -> Int) -> Int rethrows { // expected-error{{'rethrows' may only occur before '->'}}{{42-42=rethrows }}{{48-57=}}
   return try f()
 }
 

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -16,7 +16,6 @@
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/CFG.h"
-#include "swift/SIL/SILModule.h"
 // FIXME: For mapTypeInContext
 #include "swift/AST/ArchetypeBuilder.h"
 #include "llvm/ADT/Optional.h"
@@ -25,6 +24,19 @@
 
 using namespace swift;
 using namespace Lowering;
+
+SILSpecializeAttr::SILSpecializeAttr(ArrayRef<Substitution> subs)
+  : numSubs(subs.size()) {
+  std::copy(subs.begin(), subs.end(), getTrailingObjects<Substitution>());
+}
+
+SILSpecializeAttr *SILSpecializeAttr::create(SILModule &M,
+                                             ArrayRef<Substitution> subs) {
+  unsigned size =
+    sizeof(SILSpecializeAttr) + (subs.size() * sizeof(Substitution));
+  void *buf = M.allocate(size, alignof(SILSpecializeAttr));
+  return ::new (buf) SILSpecializeAttr(subs);
+}
 
 SILFunction *SILFunction::create(SILModule &M, SILLinkage linkage,
                                  StringRef name,
@@ -90,11 +102,13 @@ SILFunction::SILFunction(SILModule &Module, SILLinkage Linkage,
     Linkage(unsigned(Linkage)),
     KeepAsPublic(false),
     ForeignBody(false),
-    EK(E) {
+    EffectsKindAttr(E) {
   if (InsertBefore)
     Module.functions.insert(SILModule::iterator(InsertBefore), this);
   else
     Module.functions.push_back(this);
+
+  Module.removeFromZombieList(Name);
 
   // Set our BB list to have this function as its parent. This enables us to
   // splice efficiently basic blocks in between functions.
@@ -102,14 +116,29 @@ SILFunction::SILFunction(SILModule &Module, SILLinkage Linkage,
 }
 
 SILFunction::~SILFunction() {
-#ifndef NDEBUG
   // If the function is recursive, a function_ref inst inside of the function
   // will give the function a non-zero ref count triggering the assertion. Thus
   // we drop all instruction references before we erase.
+  // We also need to drop all references if instructions are allocated using
+  // an allocator that may recycle freed memory.
   dropAllReferences();
+
+  auto &M = getModule();
+  for (auto &BB : *this) {
+    for (auto I = BB.begin(), E = BB.end(); I != E;) {
+      auto Inst = &*I;
+      ++I;
+      SILInstruction::destroy(Inst);
+      // TODO: It is only safe to directly deallocate an
+      // instruction if this BB is being removed in scope
+      // of destructing a SILFunction.
+      M.deallocateInst(Inst);
+    }
+    BB.InstList.clearAndLeakNodesUnsafely();
+  }
+
   assert(RefCount == 0 &&
          "Function cannot be deleted while function_ref's still exist");
-#endif
 }
 
 void SILFunction::setDeclContext(Decl *D) {
@@ -151,7 +180,7 @@ ASTContext &SILFunction::getASTContext() const {
 bool SILFunction::shouldOptimize() const {
   if (Module.getStage() == SILStage::Raw)
     return true;
-  return !hasSemanticsString("optimize.sil.never");
+  return !hasSemanticsAttr("optimize.sil.never");
 }
 
 Type SILFunction::mapTypeIntoContext(Type type) const {
@@ -206,11 +235,13 @@ struct SubstDependentSILType
       params.push_back(param.map([&](CanType pt) -> CanType {
         return visit(pt);
       }));
-    
-    SILResultInfo result = t->getResult().map([&](CanType elt) -> CanType {
-        return visit(elt);
-      });
 
+    SmallVector<SILResultInfo, 4> results;
+    for (auto &result : t->getAllResults())
+      results.push_back(result.map([&](CanType pt) -> CanType {
+        return visit(pt);
+      }));
+    
     Optional<SILResultInfo> errorResult;
     if (t->hasErrorResult()) {
       errorResult = t->getErrorResult().map([&](CanType elt) -> CanType {
@@ -221,7 +252,7 @@ struct SubstDependentSILType
     return SILFunctionType::get(t->getGenericSignature(),
                                 t->getExtInfo(),
                                 t->getCalleeConvention(),
-                                params, result, errorResult,
+                                params, results, errorResult,
                                 t->getASTContext());
   }
   
@@ -252,6 +283,12 @@ SILType ArchetypeBuilder::substDependentType(SILModule &M, SILType type) {
   return doSubstDependentSILType(M,
     [&](CanType t) { return substDependentType(t)->getCanonicalType(); },
     type);
+}
+
+Type SILFunction::mapTypeOutOfContext(Type type) const {
+  return ArchetypeBuilder::mapTypeOutOfContext(getModule().getSwiftModule(),
+                                               getContextGenericParams(),
+                                               type);
 }
 
 SILBasicBlock *SILFunction::createBasicBlock() {
@@ -473,9 +510,25 @@ bool SILFunction::hasName(const char *Name) const {
   return getName() == Name;
 }
 
-  /// Helper method which returns true if the linkage of the SILFunction
-  /// indicates that the objects definition might be required outside the
-  /// current SILModule.
+/// Returns true if this function can be referenced from a fragile function
+/// body.
+bool SILFunction::hasValidLinkageForFragileRef() const {
+  // Fragile functions can reference 'static inline' functions imported
+  // from C.
+  if (hasForeignBody())
+    return true;
+
+  // If we can inline it, we can reference it.
+  if (hasValidLinkageForFragileInline())
+    return true;
+
+  // Otherwise, only public functions can be referenced.
+  return hasPublicVisibility(getLinkage());
+}
+
+/// Helper method which returns true if the linkage of the SILFunction
+/// indicates that the objects definition might be required outside the
+/// current SILModule.
 bool
 SILFunction::isPossiblyUsedExternally() const {
   return swift::isPossiblyUsedExternally(getLinkage(),

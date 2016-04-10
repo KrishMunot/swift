@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -60,7 +60,7 @@ void ConstraintLocator::Profile(llvm::FoldingSetNodeID &id, Expr *anchor,
     case ClosureResult:
     case ParentType:
     case InstanceType:
-    case SequenceGeneratorType:
+    case SequenceIteratorProtocol:
     case GeneratorElementType:
     case ArrayElementType:
     case ScalarToTuple:
@@ -196,8 +196,8 @@ void ConstraintLocator::dump(SourceManager *sm, raw_ostream &out) {
       out << "scalar to tuple";
       break;
 
-    case SequenceGeneratorType:
-      out << "sequence generator type";
+    case SequenceIteratorProtocol:
+      out << "sequence iterator type";
       break;
 
     case SubscriptIndex:

@@ -2,7 +2,7 @@
 
 @objc public class SwiftClass {
   public init(x: Int) {}
-  public func pureSwiftMethod(x: Int?) -> Bool {
+  public func pureSwiftMethod(_ x: Int?) -> Bool {
     return x != nil ? true : false
   }
 }
@@ -12,10 +12,10 @@ public class PureSwiftClass {
 }
 
 @objc(SwiftProtoWithCustomName)
-public protocol CustomNameType {}
+public protocol CustomName {}
 
 @objc(SwiftClassWithCustomName)
-public class CustomNameClass : CustomNameType {
+public class CustomNameClass : CustomName {
   public init() {}
   @nonobjc func pureSwiftMethod() {}
 }

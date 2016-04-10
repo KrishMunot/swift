@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -147,22 +147,6 @@ enum ASTNameLookupFlags {
                           NL_RemoveNonVisible | NL_RemoveOverridden
 };
 
-/// Describes the result of looking for the conformance of a given type
-/// to a specific protocol.
-enum class ConformanceKind {
-  /// The type does not conform to the protocol.
-  DoesNotConform,
-  /// The type conforms to the protocol, with the given conformance.
-  Conforms,
-  /// The type is specified to conform to the protocol, but that conformance
-  /// has not yet been checked.
-  UncheckedConforms
-};
-
-/// The result of looking for a specific conformance.
-typedef llvm::PointerIntPair<ProtocolConformance *, 2, ConformanceKind>
-  LookupConformanceResult;
-
 /// Discriminator for file-units.
 enum class FileUnitKind {
   /// For a .swift source file.
@@ -182,6 +166,27 @@ enum class SourceFileKind {
   Main,     ///< A .swift file that can have top-level code.
   REPL,     ///< A virtual file that holds the user's input in the REPL.
   SIL       ///< Came from a .sil file.
+};
+
+/// Discriminator for resilience strategy.
+enum class ResilienceStrategy : unsigned {
+  /// Public nominal types: fragile
+  /// Non-inlineable function bodies: resilient
+  ///
+  /// This is the default behavior without any flags.
+  Default,
+
+  /// Public nominal types: resilient
+  /// Non-inlineable function bodies: resilient
+  ///
+  /// This is the behavior with -enable-resilience.
+  Resilient,
+
+  /// Public nominal types: fragile
+  /// Non-inlineable function bodies: fragile
+  ///
+  /// This is the behavior with -sil-serialize-all.
+  Fragile
 };
 
 /// The minimum unit of compilation.
@@ -267,13 +272,14 @@ private:
   /// \see EntryPointInfoTy
   EntryPointInfoTy EntryPointInfo;
 
-  enum class Flags {
-    TestingEnabled = 1 << 0,
-    FailedToLoad = 1 << 1
-  };
+  struct {
+    unsigned TestingEnabled : 1;
+    unsigned FailedToLoad : 1;
+    unsigned ResilienceStrategy : 2;
+  } Flags;
 
   /// The magic __dso_handle variable.
-  llvm::PointerIntPair<VarDecl *, 2, OptionSet<Flags>> DSOHandleAndFlags;
+  VarDecl *DSOHandle;
 
   ModuleDecl(Identifier name, ASTContext &ctx);
 
@@ -315,18 +321,25 @@ public:
 
   /// Returns true if this module was or is being compiled for testing.
   bool isTestingEnabled() const {
-    return DSOHandleAndFlags.getInt().contains(Flags::TestingEnabled);
+    return Flags.TestingEnabled;
   }
   void setTestingEnabled(bool enabled = true) {
-    DSOHandleAndFlags.setInt(DSOHandleAndFlags.getInt()|Flags::TestingEnabled);
+    Flags.TestingEnabled = enabled;
   }
 
   /// Returns true if there was an error trying to load this module.
   bool failedToLoad() const {
-    return DSOHandleAndFlags.getInt().contains(Flags::FailedToLoad);
+    return Flags.FailedToLoad;
   }
   void setFailedToLoad(bool failed = true) {
-    DSOHandleAndFlags.setInt(DSOHandleAndFlags.getInt() | Flags::FailedToLoad);
+    Flags.FailedToLoad = failed;
+  }
+
+  ResilienceStrategy getResilienceStrategy() const {
+    return ResilienceStrategy(Flags.ResilienceStrategy);
+  }
+  void setResilienceStrategy(ResilienceStrategy strategy) {
+    Flags.ResilienceStrategy = unsigned(strategy);
   }
 
   /// Look up a (possibly overloaded) value set at top-level scope
@@ -378,14 +391,7 @@ public:
   /// Look for the conformance of the given type to the given protocol.
   ///
   /// This routine determines whether the given \c type conforms to the given
-  /// \c protocol. It only looks for explicit conformances (which are
-  /// required by the language), and will return a \c ProtocolConformance*
-  /// describing the conformance.
-  ///
-  /// During type-checking, it is possible that this routine will find an
-  /// explicit declaration of conformance that has not yet been type-checked,
-  /// in which case it will return note the presence of an unchecked
-  /// conformance.
+  /// \c protocol.
   ///
   /// \param type The type for which we are computing conformance.
   ///
@@ -393,9 +399,10 @@ public:
   ///
   /// \param resolver The lazy resolver.
   ///
-  /// \returns The result of the conformance search, with a conformance
-  /// structure when possible.
-  LookupConformanceResult
+  /// \returns The result of the conformance search, which will be
+  /// None if the type does not conform to the protocol or contain a
+  /// ProtocolConformanceRef if it does conform.
+  Optional<ProtocolConformanceRef>
   lookupConformance(Type type, ProtocolDecl *protocol, LazyResolver *resolver);
 
   /// Find a member named \p name in \p container that was declared in this
@@ -408,6 +415,11 @@ public:
   void lookupMember(SmallVectorImpl<ValueDecl*> &results,
                     DeclContext *container, DeclName name,
                     Identifier privateDiscriminator) const;
+
+  /// Find all Objective-C methods with the given selector.
+  void lookupObjCMethods(
+         ObjCSelector selector,
+         SmallVectorImpl<AbstractFunctionDecl *> &results) const;
 
   /// \sa getImportedModules
   enum class ImportFilter {
@@ -572,7 +584,7 @@ private:
 public:
   // Only allow allocation of Modules using the allocator in ASTContext
   // or by doing a placement new.
-  void *operator new(size_t Bytes, ASTContext &C,
+  void *operator new(size_t Bytes, const ASTContext &C,
                      unsigned Alignment = alignof(ModuleDecl));
 };
 
@@ -639,15 +651,42 @@ public:
                                  DeclName name,
                                  SmallVectorImpl<ValueDecl*> &results) const {}
 
+  /// Find all Objective-C methods with the given selector.
+  virtual void lookupObjCMethods(
+                 ObjCSelector selector,
+                 SmallVectorImpl<AbstractFunctionDecl *> &results) const = 0;
+
   /// Returns the comment attached to the given declaration.
   ///
   /// This function is an implementation detail for comment serialization.
   /// If you just want to get a comment attached to a decl, use
   /// \c Decl::getRawComment() or \c Decl::getBriefComment().
-  virtual Optional<BriefAndRawComment>
+  virtual Optional<CommentInfo>
   getCommentForDecl(const Decl *D) const {
     return None;
   }
+
+  virtual Optional<StringRef>
+  getGroupNameForDecl(const Decl *D) const {
+    return None;
+  }
+
+  virtual Optional<StringRef>
+  getSourceFileNameForDecl(const Decl *D) const {
+    return None;
+  }
+
+  virtual Optional<unsigned>
+  getSourceOrderForDecl(const Decl *D) const {
+    return None;
+  }
+
+  virtual Optional<StringRef>
+  getGroupNameByUSR(StringRef USR) const {
+    return None;
+  }
+
+  virtual void collectAllGroups(std::vector<StringRef> &Names) const {}
 
   /// Returns an implementation-defined "discriminator" for \p D, which
   /// distinguishes \p D from other declarations in the same module with the
@@ -804,6 +843,10 @@ public:
   
   void getTopLevelDecls(SmallVectorImpl<Decl*> &results) const override;
 
+  void lookupObjCMethods(
+         ObjCSelector selector,
+         SmallVectorImpl<AbstractFunctionDecl *> &results) const override;
+
   Identifier
   getDiscriminatorForPrivateValue(const ValueDecl *D) const override {
     llvm_unreachable("no private decls in the derived file unit");
@@ -903,6 +946,11 @@ public:
   /// complete, we diagnose.
   std::map<DeclAttrKind, const DeclAttribute *> AttrsRequiringFoundation;
 
+  /// A mapping from Objective-C selectors to the methods that have
+  /// those selectors.
+  llvm::DenseMap<ObjCSelector, llvm::TinyPtrVector<AbstractFunctionDecl *>>
+    ObjCMethods;
+
   template <typename T>
   using OperatorMap = llvm::DenseMap<Identifier,llvm::PointerIntPair<T,1,bool>>;
 
@@ -958,6 +1006,10 @@ public:
   virtual void
   lookupClassMember(ModuleDecl::AccessPathTy accessPath, DeclName name,
                     SmallVectorImpl<ValueDecl*> &results) const override;
+
+  void lookupObjCMethods(
+         ObjCSelector selector,
+         SmallVectorImpl<AbstractFunctionDecl *> &results) const override;
 
   virtual void getTopLevelDecls(SmallVectorImpl<Decl*> &results) const override;
 
@@ -1120,6 +1172,11 @@ public:
                            NLKind lookupKind,
                            SmallVectorImpl<ValueDecl*> &result) const override;
 
+  /// Find all Objective-C methods with the given selector.
+  void lookupObjCMethods(
+         ObjCSelector selector,
+         SmallVectorImpl<AbstractFunctionDecl *> &results) const override;
+
   Identifier
   getDiscriminatorForPrivateValue(const ValueDecl *D) const override {
     llvm_unreachable("no private values in the Builtin module");
@@ -1188,18 +1245,19 @@ inline FileUnit &ModuleDecl::getMainFile(FileUnitKind expectedKind) const {
 /// Wraps either a swift module or a clang one.
 /// FIXME: Should go away once swift modules can support submodules natively.
 class ModuleEntity {
-  llvm::PointerUnion<const ModuleDecl *, const clang::Module *> Mod;
+  llvm::PointerUnion<const ModuleDecl *, const /* clang::Module */ void *> Mod;
 
 public:
   ModuleEntity() = default;
   ModuleEntity(const ModuleDecl *Mod) : Mod(Mod) {}
-  ModuleEntity(const clang::Module *Mod) : Mod(Mod) {}
+  ModuleEntity(const clang::Module *Mod) : Mod(static_cast<const void *>(Mod)){}
 
   StringRef getName() const;
   std::string getFullName() const;
 
   bool isSystemModule() const;
   bool isBuiltinModule() const;
+  const ModuleDecl *getAsSwiftModule() const;
 
   explicit operator bool() const { return !Mod.isNull(); }
 };

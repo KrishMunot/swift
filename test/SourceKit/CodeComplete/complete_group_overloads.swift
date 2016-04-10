@@ -2,10 +2,10 @@ struct A {}
 struct B {}
 
 func aaa() {}
-func aaa(x: A) {}
-func aaa(x: B) {}
-func aaa(x: B, y: B) {}
-func aaa(#x: B, y: B) {}
+func aaa(_ x: A) {}
+func aaa(_ x: B) {}
+func aaa(_ x: B, y: B) {}
+func aaa(x x: B, y: B) {}
 func aab() {}
 
 func test001() {
@@ -22,10 +22,10 @@ func test001() {
 
 struct Foo {
   func aaa() {}
-  func aaa(x: A) {}
-  func aaa(x: B) {}
-  func aaa(x: B, y: B) {}
-  func aaa(#x: B, y: B) {}
+  func aaa(_ x: A) {}
+  func aaa(_ x: B) {}
+  func aaa(_ x: B, y: B) {}
+  func aaa(x x: B, y: B) {}
   func aab() {}
 }
 
@@ -44,7 +44,7 @@ func test002() {
 
 extension Foo {
   static func bbb() {}
-  static func bbb(x: A) {}
+  static func bbb(_ x: A) {}
   static func bbc() {}
 }
 

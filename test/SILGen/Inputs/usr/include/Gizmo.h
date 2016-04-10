@@ -36,7 +36,7 @@ typedef long NSInteger;
 - (Gizmo*) initWithBellsOn:(NSInteger)x OBJC_DESIGNATED_INITIALIZER;
 - (instancetype) initWithoutBells:(NSInteger)x;
 - (void) fork NS_CONSUMES_SELF;
-- (void) enumerateSubGizmos: (void (^)(Gizmo*))f;
+- (void) enumerateSubGizmos: (void (^ _Nullable)(Gizmo*))f;
 + (void) consume: (NS_CONSUMED Gizmo*) gizmo;
 + (void) inspect: (Gizmo*) gizmo;
 + (void) runWithRect: (struct Rect) rect andGizmo: (Gizmo*) gizmo;
@@ -58,8 +58,8 @@ typedef long NSInteger;
 + (instancetype)gizmoWithStuff:(NSInteger)x;
 + (Gizmo*)gizmoWithExactlyStuff:(NSInteger)x;
 
-- (Gizmo*)nonNilGizmo;
-+ (Gizmo*)nonNilGizmo;
+- (Gizmo*)nonNilGizmo __attribute__((swift_name("nonNilGizmo()")));
++ (Gizmo*)nonNilGizmo __attribute__((swift_name("nonNilGizmo()")));
 @property Gizmo* nonNilGizmoProperty;
 @property (unsafe_unretained) Gizmo* unownedNonNilGizmoProperty;
 @end
@@ -96,7 +96,7 @@ struct NSRect NSMakeRect(double, double, double, double);
 struct NSRect NSInsetRect(struct NSRect, double, double);
 NSString *NSStringFromRect(struct NSRect r);
 
-typedef  NS_ENUM(NSInteger, NSRuncingOptions) {
+typedef NS_ENUM(NSInteger, NSRuncingOptions) {
   NSRuncingMince = 123,
   NSRuncingQuinceSliced = 4567,
   NSRuncingQuinceJulienned = 5678,

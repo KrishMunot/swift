@@ -1,5 +1,4 @@
 // RUN: %target-swift-frontend -emit-ir -g %s -o %t.ll
-// RUN: FileCheck %s --check-prefix SANITY < %t.ll
 // RUN: FileCheck %s --check-prefix CHECK-HIDDEN < %t.ll
 // RUN: FileCheck %s --check-prefix IMPORT-CHECK < %t.ll
 // RUN: FileCheck %s --check-prefix LOC-CHECK < %t.ll
@@ -7,22 +6,7 @@
 // RUN: llvm-dwarfdump %t.o | FileCheck %s --check-prefix DWARF-CHECK
 // RUN: dwarfdump --verify %t.o
 
-// Make sure that there is no ret instruction without a !dbg annotation.
-// This ensures that we associate every function with a debug scope.
-//
-// Unfortunately we need to exclude available_externally functions
-// from this test; they are only there to help with optimizations and
-// are ignored from MC on, so we don't emit debug info for them.
-// FIXME: Come up with an invocation of clang-extract that can eliminate
-// available_externally functions, so we can retire this hackfest:
 // REQUIRES: OS=macosx
-// RUN: cat %t.ll | grep -E '^define .*(\@get_field_types)' | wc -l >%t.external_count
-// This test assumes that the '!' can only appear as part of a !dbg annotation.
-// RUN: cat %t.ll | grep -E '^ *ret [^!]+$' | count `cat %t.external_count`
-
-// Sanity check for the regex above.
-// SANITY: {{^ *ret }}
-// SANITY: !DICompileUnit(
 
 // CHECK-HIDDEN: @[[HIDDEN_GV:_TWVVSC.*]] = linkonce_odr hidden
 // CHECK-HIDDEN-NOT: !DIGlobalVariable({{.*}}[[HIDDEN_GV]]
@@ -43,7 +27,7 @@ class MyObject : NSObject {
 // IMPORT-CHECK-SAME:             scope: ![[FOUNDATION]]
 // IMPORT-CHECK: !DIImportedEntity(tag: DW_TAG_imported_module, {{.*}}entity: ![[FOUNDATION]]
 
-  func foo(obj: MyObject) {
+  func foo(_ obj: MyObject) {
     return obj.foo(obj)
   }
 }
@@ -72,20 +56,19 @@ public func err() {
 
 // LOC-CHECK: define {{.*}}4date
 public func date() {
-  // LOC-CHECK: call {{.*}} @_TFSSCfT21_builtinStringLiteralBp8byteSizeBw7isASCIIBi1__SS{{.*}}, !dbg ![[L1:.*]]
+  // LOC-CHECK: call {{.*}} @_TFSSCfT21_builtinStringLiteralBp17utf8CodeUnitCountBw7isASCIIBi1__SS{{.*}}, !dbg ![[L1:.*]]
   let d1 = NSDateFormatter()
   // LOC-CHECK: br{{.*}}, !dbg ![[L2:.*]]
   d1.dateFormat = "dd. mm. yyyy" // LOC-CHECK: call{{.*}}objc_msgSend{{.*}}, !dbg ![[L2]]
-  // LOC-CHECK: call {{.*}} @_TFSSCfT21_builtinStringLiteralBp8byteSizeBw7isASCIIBi1__SS{{.*}}, !dbg ![[L3:.*]]
+  // LOC-CHECK: call {{.*}} @_TFSSCfT21_builtinStringLiteralBp17utf8CodeUnitCountBw7isASCIIBi1__SS{{.*}}, !dbg ![[L3:.*]]
   let d2 = NSDateFormatter()
   // LOC-CHECK: br{{.*}}, !dbg ![[L4:.*]]
   d2.dateFormat = "mm dd yyyy" // LOC-CHECK: call{{.*}}objc_msgSend{{.*}}, !dbg ![[L4]]
 }
 
 // Make sure we build some witness tables for enums.
-func useOptions(opt: NSURLBookmarkCreationOptions)
+func useOptions(_ opt: NSURLBookmarkCreationOptions)
        -> NSURLBookmarkCreationOptions {
-  var opt = opt
   return [opt, opt]
 }
 

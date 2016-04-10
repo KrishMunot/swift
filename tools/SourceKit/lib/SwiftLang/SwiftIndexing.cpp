@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -16,13 +16,13 @@
 #include "SourceKit/Support/Tracing.h"
 #include "SourceKit/Support/UIdent.h"
 
+#include "swift/AST/SourceEntityWalker.h"
 #include "swift/Basic/SourceManager.h"
 #include "swift/Frontend/Frontend.h"
 #include "swift/Frontend/PrintingDiagnosticConsumer.h"
-#include "swift/IDE/SourceEntityWalker.h"
 #include "swift/Serialization/SerializedModuleLoader.h"
 // This is included only for createLazyResolver(). Move to different header ?
-#include "swift/Sema/CodeCompletionTypeChecking.h"
+#include "swift/Sema/IDETypeChecking.h"
 
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallString.h"
@@ -84,7 +84,7 @@ public:
   }
 };
 
-class IndexSwiftASTWalker : public ide::SourceEntityWalker {
+class IndexSwiftASTWalker : public SourceEntityWalker {
   IndexingConsumer &IdxConsumer;
   SourceManager &SrcMgr;
   unsigned BufferID;
@@ -511,6 +511,7 @@ bool IndexSwiftASTWalker::reportPseudoAccessor(AbstractStorageDecl *D,
     Info.Kind = SwiftLangSupport::getUIDForAccessor(D, AccKind, IsRef);
     Info.Name.clear();
     Info.USR.clear();
+    Info.Group.clear();
     llvm::raw_svector_ostream OS(Info.USR);
     SwiftLangSupport::printAccessorUSR(D, AccKind, OS);
 
@@ -698,7 +699,10 @@ bool IndexSwiftASTWalker::initEntityInfo(ValueDecl *D,
   if (SwiftLangSupport::printUSR(D, OS))
     return true;
   std::tie(Info.Line, Info.Column) = getLineCol(Loc);
-
+  if (auto Group = D->getGroupName()) {
+    Info.Group.clear();
+    Info.Group.append(Group.getValue());
+  }
   return false;
 }
 
@@ -725,15 +729,11 @@ static bool isTestCandidate(ValueDecl *D) {
     if (!NTD)
       return false;
     Type RetTy = FD->getResultType();
-    if (FD->getBodyParamPatterns().size() != 2)
+    if (FD->getParameterLists().size() != 2)
       return false;
-    TuplePattern *ArgP = dyn_cast<TuplePattern>(FD->getBodyParamPatterns()[1]);
-    if (!ArgP)
-      return false;
-    if (RetTy && RetTy->isVoid() &&
-        isa<ClassDecl>(NTD) &&
-        ArgP->getNumElements() == 0 &&
-        FD->getName().str().startswith("test"))
+    auto paramList = FD->getParameterList(1);
+    if (RetTy && RetTy->isVoid() && isa<ClassDecl>(NTD) &&
+        paramList->size() == 0 && FD->getName().str().startswith("test"))
       return true;
   }
 
@@ -746,6 +746,10 @@ bool IndexSwiftASTWalker::initFuncDeclEntityInfo(ValueDecl *D,
     return true;
 
   Info.IsTestCandidate = isTestCandidate(D);
+  if (auto Group = D->getGroupName()) {
+    Info.Group.clear();
+    Info.Group.append(Group.getValue());
+  }
   return false;
 }
 
@@ -1009,9 +1013,9 @@ static void indexModule(llvm::MemoryBuffer *Input,
 }
 
 
-//============================================================================//
+//===----------------------------------------------------------------------===//
 // IndexSource
-//============================================================================//
+//===----------------------------------------------------------------------===//
 
 void trace::initTraceInfo(trace::SwiftInvocation &SwiftArgs,
                           StringRef InputFile,

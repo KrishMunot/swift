@@ -21,8 +21,8 @@ let total = 15.0
 let count = 7
 let median = total / count // expected-error {{binary operator '/' cannot be applied to operands of type 'Double' and 'Int'}} expected-note {{overloads for '/' exist with these partially matching parameter lists: (Int, Int), (Double, Double)}}
 
-if (1) {} // expected-error{{type 'Int' does not conform to protocol 'BooleanType'}}
-if 1 {} // expected-error {{type 'Int' does not conform to protocol 'BooleanType'}}
+if (1) {} // expected-error{{type 'Int' does not conform to protocol 'Boolean'}}
+if 1 {} // expected-error {{type 'Int' does not conform to protocol 'Boolean'}}
 
 var a: [String] = [1] // expected-error{{cannot convert value of type 'Int' to expected element type 'String'}}
 var b: Int = [1, 2, 3] // expected-error{{contextual type 'Int' cannot be used with array literal}}
@@ -38,9 +38,9 @@ func f() -> Bool {
 }
 
 // Test that nested diagnostics are properly surfaced.
-func takesInt(i: Int) {}
+func takesInt(_ i: Int) {}
 func noParams() -> Int { return 0 }
-func takesAndReturnsInt(i: Int) -> Int { return 0 }
+func takesAndReturnsInt(_ i: Int) -> Int { return 0 }
 
 takesInt(noParams(1)) // expected-error{{argument passed to call that takes no arguments}}
 
@@ -51,8 +51,7 @@ struct MyArray<Element> {}
 class A {
     var a: MyArray<Int>
     init() {
-        a = MyArray<Int // expected-error{{no '<' candidates produce the expected contextual result type 'MyArray<Int>'}}
-      // expected-note @-1 {{produces result of type 'Bool'}}
+        a = MyArray<Int // expected-error{{'<' produces 'Bool', not the expected contextual result type 'MyArray<Int>'}}
     }
 }
 
@@ -74,8 +73,7 @@ func bad_return2() -> (Int, Int) {
 
 // <rdar://problem/14096697> QoI: Diagnostics for trying to return values from void functions
 func bad_return3(lhs:Int, rhs:Int) {
-  return lhs != 0  // expected-error {{no '!=' candidates produce the expected contextual result type '()'}}
-  // expected-note @-1 {{produces result of type 'Bool'}}
+  return lhs != 0  // expected-error {{'!=' produces 'Bool', not the expected contextual result type '()'}}
 }
 
 class MyBadReturnClass {
@@ -90,9 +88,8 @@ func ==(lhs:MyBadReturnClass, rhs:MyBadReturnClass) {
 func testIS1() -> Int { return 0 }
 let _: String = testIS1() // expected-error {{cannot convert value of type 'Int' to specified type 'String'}}
 
-func insertA<T>(inout array : [T], elt : T) {
-  array.append(T); // expected-error {{cannot invoke 'append' with an argument list of type '((T).Type)'}}
-  // expected-note @-1 {{expected an argument list of type '(T)'}}
+func insertA<T>(array : inout [T], elt : T) {
+  array.append(T); // expected-error {{cannot invoke 'append' with an argument list of type '((T).Type)'}} expected-note {{expected an argument list of type '(T)'}}
 }
 
 // <rdar://problem/17875634> can't append to array of tuples
@@ -120,7 +117,7 @@ func test17875634() {
 
   // Make sure the behavior matches the non-generic case.
   struct FakeNonGenericArray {
-    func append(p: (Int, Int)) {}
+    func append(_ p: (Int, Int)) {}
   }
   let a2 = FakeNonGenericArray()
   a2.append(row, col) // expected-error{{extra argument in call}}
@@ -134,3 +131,24 @@ func test20770032() {
   if case let 1...10 = (1, 1) { // expected-warning{{'let' pattern has no effect; sub-pattern didn't bind any variables}} {{11-15=}} expected-error{{expression pattern of type 'Range<Int>' cannot match values of type '(Int, Int)'}}
   }
 }
+
+
+
+func tuple_splat1(_ a : Int, _ b : Int) {
+  let x = (1,2)
+  tuple_splat1(x)          // expected-warning {{passing 2 arguments to a callee as a single tuple value is deprecated}}
+  tuple_splat1(1, 2)       // Ok.
+  tuple_splat1((1, 2))     // expected-error {{missing argument for parameter #2 in call}}
+}
+
+// This take a tuple as a value, so it isn't a tuple splat.
+func tuple_splat2(_ q : (a : Int, b : Int)) {
+  let x = (1,2)
+  tuple_splat2(x)          // Ok
+  let y = (1, b: 2)
+  tuple_splat2(y)          // Ok
+  tuple_splat2((1, b: 2))  // Ok.
+  tuple_splat2(1, b: 2)    // expected-error {{extra argument 'b' in call}}
+}
+
+

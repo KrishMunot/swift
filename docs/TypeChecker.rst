@@ -22,11 +22,11 @@ parametric polymorphism. Swift makes extensive use of type inference,
 allowing one to omit the types of many variables and expressions. For
 example::
 
-  func round(x: Double) -> Int { /* ... */ }
+  func round(_ x: Double) -> Int { /* ... */ }
   var pi: Double = 3.14159
   var three = round(pi) // 'three' has type 'Int'
 
-  func identity<T>(x: T) -> T { return x }
+  func identity<T>(_ x: T) -> T { return x }
   var eFloat: Float = -identity(2.71828)  // numeric literal gets type 'Float'
 
 Swift's type inference allows type information to flow in two
@@ -106,7 +106,7 @@ the Swift type system:
   flavors of equality constraints: 
 
     - Exact equality constraints, or  "binding", written ``T0 := X``
-      for some type variable ``T0`` and  type ``X``, which requires
+      for some type variable ``T0`` and type ``X``, which requires
       that ``T0`` be exactly identical to ``X``;
     - Equality constraints, written ``X == Y`` for types ``X`` and
       ``Y``, which require ``X`` and ``Y`` to have the same type,
@@ -336,8 +336,8 @@ Overloading is the process of giving multiple, different definitions
 to the same name. For example, we might overload a ``negate`` function
 to work on both ``Int`` and ``Double`` types, e.g.::
 
-  func negate(x: Int) -> Int { return -x }
-  func negate(x: Double) -> Double { return -x }
+  func negate(_ x: Int) -> Int { return -x }
+  func negate(_ x: Double) -> Double { return -x }
 
 Given that there are two definitions of ``negate``, what is the type
 of the declaration reference expression ``negate``? If one selects the
@@ -650,7 +650,7 @@ Comparing Solutions
 The solver explores a potentially large solution space, and it is
 possible that it will find multiple solutions to the constraint system
 as given. Such cases are not necessarily ambiguities, because the
-solver can then compare the solutions to to determine whether one of
+solver can then compare the solutions to determine whether one of
 the solutions is better than all of the others. To do so, it computes
 a "score" for each solution based on a number of factors:
 
@@ -730,7 +730,7 @@ checking problem::
     func [conversion] __conversion () -> Int { /* ... */ }
   }
 
-  func f(i : Int, s : String) { }
+  func f(_ i : Int, s : String) { }
 
   var x : X
   f(10.5, x)
@@ -836,7 +836,7 @@ consider a slight modification to our example, so that the argument to
 ``f`` is provided by another call, we get a different result
 entirely::
 
-  func f(i : Int, s : String) { }
+  func f(_ i : Int, s : String) { }
   func g() -> (f : Float, x : X) { }
 
   f(g())

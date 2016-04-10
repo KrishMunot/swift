@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -81,8 +81,9 @@ findModule(ASTContext &ctx, AccessPathElem moduleID,
 
   // FIXME: Which name should we be using here? Do we care about CPU subtypes?
   // FIXME: At the very least, don't hardcode "arch".
-  llvm::SmallString<16> archFile(ctx.LangOpts.getTargetConfigOption("arch"));
-  llvm::SmallString<16> archDocFile(ctx.LangOpts.getTargetConfigOption("arch"));
+  llvm::SmallString<16> archFile{
+      ctx.LangOpts.getPlatformConditionValue("arch")};
+  llvm::SmallString<16> archDocFile{archFile};
   if (!archFile.empty()) {
     archFile += '.';
     archFile += SERIALIZED_MODULE_EXTENSION;
@@ -168,6 +169,8 @@ FileUnit *SerializedModuleLoader::loadAST(
                                                &extendedInfo);
   if (err == serialization::Status::Valid) {
     Ctx.bumpGeneration();
+
+    M.setResilienceStrategy(extendedInfo.getResilienceStrategy());
 
     // We've loaded the file. Now try to bring it into the AST.
     auto fileUnit = new (Ctx) SerializedASTFile(M, *loadedModuleFile,
@@ -420,15 +423,24 @@ void SerializedASTFile::getImportedModules(
   File.getImportedModules(imports, filter);
 }
 
+void SerializedASTFile::collectLinkLibrariesFromImports(
+    Module::LinkLibraryCallback callback) const {
+  llvm::SmallVector<Module::ImportedModule, 8> Imports;
+  File.getImportedModules(Imports, Module::ImportFilter::All);
+
+  for (auto Import : Imports)
+    Import.second->collectLinkLibraries(callback);
+}
+
 void SerializedASTFile::collectLinkLibraries(
     Module::LinkLibraryCallback callback) const {
   if (isSIB()) {
-    llvm::SmallVector<Module::ImportedModule, 8> Imports;
-    File.getImportedModules(Imports, Module::ImportFilter::All);
-
-    for (auto Import : Imports)
-      Import.second->collectLinkLibraries(callback);
+    collectLinkLibrariesFromImports(callback);
   } else {
+    if (File.getAssociatedModule()->getResilienceStrategy()
+        == ResilienceStrategy::Fragile) {
+      collectLinkLibrariesFromImports(callback);
+    }
     File.collectLinkLibraries(callback);
   }
 }
@@ -476,9 +488,41 @@ SerializedASTFile::lookupClassMember(Module::AccessPathTy accessPath,
   File.lookupClassMember(accessPath, name, decls);
 }
 
-Optional<BriefAndRawComment>
+void SerializedASTFile::lookupObjCMethods(
+       ObjCSelector selector,
+       SmallVectorImpl<AbstractFunctionDecl *> &results) const {
+  File.lookupObjCMethods(selector, results);
+}
+
+Optional<CommentInfo>
 SerializedASTFile::getCommentForDecl(const Decl *D) const {
   return File.getCommentForDecl(D);
+}
+
+Optional<StringRef>
+SerializedASTFile::getGroupNameForDecl(const Decl *D) const {
+  return File.getGroupNameForDecl(D);
+}
+
+
+Optional<StringRef>
+SerializedASTFile::getSourceFileNameForDecl(const Decl *D) const {
+  return File.getSourceFileNameForDecl(D);
+}
+
+Optional<unsigned>
+SerializedASTFile::getSourceOrderForDecl(const Decl *D) const {
+  return File.getSourceOrderForDecl(D);
+}
+
+void
+SerializedASTFile::collectAllGroups(std::vector<StringRef> &Names) const {
+  File.collectAllGroups(Names);
+};
+
+Optional<StringRef>
+SerializedASTFile::getGroupNameByUSR(StringRef USR) const {
+  return File.getGroupNameByUSR(USR);
 }
 
 void

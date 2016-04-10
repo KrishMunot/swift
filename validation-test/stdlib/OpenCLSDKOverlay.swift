@@ -20,8 +20,8 @@
 //
 //             In consideration of your agreement to abide by the following terms, and
 //             subject to these terms, Apple grants you a personal, non - exclusive
-//             license, under Apple's copyrights in this original Apple software ( the
-//             "Apple Software" ), to use, reproduce, modify and redistribute the Apple
+//             license, under Apple's copyrights in this original Apple software (the
+//             "Apple Software"), to use, reproduce, modify and redistribute the Apple
 //             Software, with or without modifications, in source and / or binary forms
 //             provided that if you redistribute the Apple Software in its entirety and
 //             without modifications, you must retain this notice and the following text
@@ -41,19 +41,21 @@
 //             ALONE OR IN COMBINATION WITH YOUR PRODUCTS.
 //
 //             IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
-//             CONSEQUENTIAL DAMAGES ( INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+//             CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 //             SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-//             INTERRUPTION ) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
+//             INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
 //             AND / OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER
-//             UNDER THEORY OF CONTRACT, TORT ( INCLUDING NEGLIGENCE ), STRICT LIABILITY OR
+//             UNDER THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
 //             OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Copyright ( C ) 2008 Apple Inc. All Rights Reserved.
+// Copyright (C) 2008 Apple Inc. All Rights Reserved.
 //
 
 
 import OpenCL
 import StdlibUnittest
+
+
 import Foundation
 import Darwin
 
@@ -64,7 +66,7 @@ let KernelSource = "\n" +
 "   const unsigned int count)                                           \n" +
 "{                                                                      \n" +
 "   int i = get_global_id(0);                                           \n" +
-"   if(i < count)                                                       \n" +
+"   if (i < count)                                                      \n" +
 "       output[i] = input[i] * input[i];                                \n" +
 "}                                                                      \n" +
 "\n"
@@ -77,8 +79,8 @@ var tests = TestSuite("MiscSDKOverlay")
 tests.test("clSetKernelArgsListAPPLE") {
   var err: cl_int                            // error code returned from api calls
   
-  var data = [Float](count: DATA_SIZE, repeatedValue: 0)              // original data set given to device
-  var results = [Float](count: DATA_SIZE, repeatedValue: 0)           // results returned from device
+  var data = [Float](repeating: 0, count: DATA_SIZE)    // original data set given to device
+  var results = [Float](repeating: 0, count: DATA_SIZE) // results returned from device
   var correct: Int               // number of correct results returned
 
   var global: size_t                      // global domain size for our calculation
@@ -95,9 +97,8 @@ tests.test("clSetKernelArgsListAPPLE") {
   
   // Fill our data set with random float values
   //
-  var i = 0
   var count = DATA_SIZE
-  for i = 0; i < count; i++ {
+  for i in 0..<count {
     data[i] = Float(rand()) / Float(RAND_MAX)
   }
   
@@ -151,12 +152,12 @@ tests.test("clSetKernelArgsListAPPLE") {
   {
     var len: Int = 0
     
-    var buffer = [CChar](count:2048, repeatedValue: 0)
+    var buffer = [CChar](repeating: 0, count: 2048)
 
     print("Error: Failed to build program executable!")
     clGetProgramBuildInfo(
       program, device_id, cl_program_build_info(CL_PROGRAM_BUILD_LOG), 2048, &buffer, &len)
-    print("\(String.fromCString(buffer)!)")
+    print("\(String(cString: buffer))")
     exit(1)
   }
 
@@ -233,7 +234,7 @@ tests.test("clSetKernelArgsListAPPLE") {
 
   // Read back the results from the device to verify the output
   //
-  err = clEnqueueReadBuffer( commands, output, cl_bool(CL_TRUE), 0, sizeof(Float.self) * count, &results, cl_uint(0), nil, nil )
+  err = clEnqueueReadBuffer(commands, output, cl_bool(CL_TRUE), 0, sizeof(Float.self) * count, &results, cl_uint(0), nil, nil)
   if (err != CL_SUCCESS)
   {
     print("Error: Failed to read output array! \(err)")
@@ -243,10 +244,10 @@ tests.test("clSetKernelArgsListAPPLE") {
   // Validate our results
   //
   correct = 0
-  for(i = 0; i < count; i++)
+  for i in 0..<count
   {
-    if(results[i] == data[i] * data[i]){
-      correct++
+    if (results[i] == data[i] * data[i]) {
+      correct += 1
     }
   }
   

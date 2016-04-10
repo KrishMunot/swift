@@ -22,12 +22,12 @@ func f0() {
 }
 
 import func Swift.print
-func f1(a: Swift.Int) -> Swift.Void { print(a) }
+func f1(_ a: Swift.Int) -> Swift.Void { print(a) }
 
 import func Swift.print
 
 // rdar://14418336
-#import something_nonexistant // expected-error {{expected expression}} expected-error {{no such module 'something_nonexistant'}}
+#import something_nonexistent // expected-error {{expected expression}} expected-error {{no such module 'something_nonexistent'}}
 
 // Import specific decls
 import typealias Swift.Int
@@ -36,7 +36,7 @@ import typealias Swift.ManagedBuffer
 import class Swift.ManagedBuffer
 import typealias Swift.Bool
 import struct Swift.Bool
-import protocol Swift.GeneratorType
+import protocol Swift.IteratorProtocol
 import var import_builtin.x
 import func Swift.min
 

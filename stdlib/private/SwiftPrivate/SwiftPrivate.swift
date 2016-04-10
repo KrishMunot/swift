@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -13,26 +13,26 @@
 import SwiftShims
 
 /// Convert the given numeric value to a hexadecimal string.
-public func asHex<T : IntegerType>(x: T) -> String {
+public func asHex<T : Integer>(_ x: T) -> String {
   return "0x" + String(x.toIntMax(), radix: 16)
 }
 
 /// Convert the given sequence of numeric values to a string representing
 /// their hexadecimal values.
 public func asHex<
-  S: SequenceType
+  S: Sequence
 where
-  S.Generator.Element : IntegerType
->(x: S) -> String {
-  return "[ " + x.lazy.map { asHex($0) }.joinWithSeparator(", ") + " ]"
+  S.Iterator.Element : Integer
+>(_ x: S) -> String {
+  return "[ " + x.lazy.map { asHex($0) }.joined(separator: ", ") + " ]"
 }
 
 /// Compute the prefix sum of `seq`.
 public func scan<
-  S : SequenceType, U
->(seq: S, _ initial: U, _ combine: (U, S.Generator.Element) -> U) -> [U] {
+  S : Sequence, U
+>(_ seq: S, _ initial: U, _ combine: (U, S.Iterator.Element) -> U) -> [U] {
   var result: [U] = []
-  result.reserveCapacity(seq.underestimateCount())
+  result.reserveCapacity(seq.underestimatedCount)
   var runningResult = initial
   for element in seq {
     runningResult = combine(runningResult, element)
@@ -41,9 +41,9 @@ public func scan<
   return result
 }
 
-public func randomShuffle<T>(a: [T]) -> [T] {
+public func randomShuffle<T>(_ a: [T]) -> [T] {
   var result = a
-  for var i = a.count - 1; i != 0; --i {
+  for i in (1..<a.count).reversed() {
     // FIXME: 32 bits are not enough in general case!
     let j = Int(rand32(exclusiveUpperBound: UInt32(i + 1)))
     if i != j {
@@ -54,17 +54,17 @@ public func randomShuffle<T>(a: [T]) -> [T] {
 }
 
 public func gather<
-  C : CollectionType,
-  IndicesSequence : SequenceType
+  C : Collection,
+  IndicesSequence : Sequence
   where
-  IndicesSequence.Generator.Element == C.Index
+  IndicesSequence.Iterator.Element == C.Index
 >(
-  collection: C, _ indices: IndicesSequence
-) -> [C.Generator.Element] {
+  _ collection: C, _ indices: IndicesSequence
+) -> [C.Iterator.Element] {
   return Array(indices.map { collection[$0] })
 }
 
-public func scatter<T>(a: [T], _ idx: [Int]) -> [T] {
+public func scatter<T>(_ a: [T], _ idx: [Int]) -> [T] {
   var result = a
   for i in 0..<a.count {
     result[idx[i]] = a[i]
@@ -73,17 +73,17 @@ public func scatter<T>(a: [T], _ idx: [Int]) -> [T] {
 }
 
 public func withArrayOfCStrings<R>(
-  args: [String], _ body: ([UnsafeMutablePointer<CChar>]) -> R
+  _ args: [String], _ body: ([UnsafeMutablePointer<CChar>]) -> R
 ) -> R {
 
-  let argsLengths = Array(args.map { $0.utf8.count + 1 })
-  let argsOffsets = [ 0 ] + scan(argsLengths, 0, +)
+  let argsCounts = Array(args.map { $0.utf8.count + 1 })
+  let argsOffsets = [ 0 ] + scan(argsCounts, 0, +)
   let argsBufferSize = argsOffsets.last!
 
   var argsBuffer: [UInt8] = []
   argsBuffer.reserveCapacity(argsBufferSize)
   for arg in args {
-    argsBuffer.appendContentsOf(arg.utf8)
+    argsBuffer.append(contentsOf: arg.utf8)
     argsBuffer.append(0)
   }
 
@@ -95,4 +95,3 @@ public func withArrayOfCStrings<R>(
     return body(cStrings)
   }
 }
-

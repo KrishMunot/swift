@@ -13,10 +13,10 @@ b
 var opti : Int?
 // Don't add bang.
 var i : Int = opti
-// But remove unecessary bang.
+// But remove unnecessary bang.
 var i2 : Int = i
 
-struct MyMask : OptionSetType {
+struct MyMask : OptionSet {
   init(_ rawValue: UInt) {}
   init(rawValue: UInt) {}
   init(nilLiteral: ()) {}
@@ -31,24 +31,34 @@ func supported() -> MyMask {
   return MyMask.Bingo
 }
 
-func foo() -> Int {
-  do {
-  } catch let err {
-    goo(err)
+func goo(e : ErrorProtocol) {
+    var e = e
+}
+func goo2(e: ErrorProtocol) { var e = e }
+func goo3(e: Int) { var e = e; e = 3 }
+protocol A {
+  func bar(s: Int)
+}
+extension A {
+  func bar(s: Int) {
+    var s = s
+    s += 5
   }
 }
 
-func goo(e : ErrorType) {}
+func baz(x: Int) {
+  var x = x
+  x += 10
+}
+func foo(y: String, x: inout Int) {
+  
+}
 
-struct Test1 : OptionSetType {
+struct Test1 : OptionSet {
   init(rawValue: Int) {}
   var rawValue: Int { return 0 }
 }
 
-print("", terminator: "")
-Swift.print("", terminator: "")
-print("", terminator: "\n")
-print("", false, appendNewline: false)
 print("", false)
 
 func ftest1() {

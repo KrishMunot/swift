@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -12,7 +12,7 @@
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
 
-struct PackagingOptions : OptionSetType {
+struct PackagingOptions : OptionSet {
   let rawValue: Int
   init(rawValue: Int) { self.rawValue = rawValue }
 
@@ -29,6 +29,7 @@ struct PackagingOptions : OptionSetType {
 }
 
 import StdlibUnittest
+
 
 var tests = TestSuite("OptionSet")
 

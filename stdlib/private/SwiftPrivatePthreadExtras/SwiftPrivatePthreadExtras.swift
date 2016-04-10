@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -17,7 +17,7 @@
 
 #if os(OSX) || os(iOS) || os(watchOS) || os(tvOS)
 import Darwin
-#elseif os(Linux)
+#elseif os(Linux) || os(FreeBSD)
 import Glibc
 #endif
 
@@ -41,18 +41,18 @@ internal class PthreadBlockContextImpl<Argument, Result>: PthreadBlockContext {
   }
 
   override func run() -> UnsafeMutablePointer<Void> {
-    let result = UnsafeMutablePointer<Result>.alloc(1)
-    result.initialize(block(arg))
+    let result = UnsafeMutablePointer<Result>(allocatingCapacity: 1)
+    result.initialize(with: block(arg))
     return UnsafeMutablePointer(result)
   }
 }
 
 /// Entry point for `pthread_create` that invokes a block context.
 internal func invokeBlockContext(
-  contextAsVoidPointer: UnsafeMutablePointer<Void>
+  _ contextAsVoidPointer: UnsafeMutablePointer<Void>
 ) -> UnsafeMutablePointer<Void> {
   // The context is passed in +1; we're responsible for releasing it.
-  let contextAsOpaque = COpaquePointer(contextAsVoidPointer)
+  let contextAsOpaque = OpaquePointer(contextAsVoidPointer)
   let context = Unmanaged<PthreadBlockContext>.fromOpaque(contextAsOpaque)
     .takeRetainedValue()
 
@@ -61,18 +61,17 @@ internal func invokeBlockContext(
 
 /// Block-based wrapper for `pthread_create`.
 public func _stdlib_pthread_create_block<Argument, Result>(
-  attr: UnsafePointer<pthread_attr_t>,
+  _ attr: UnsafePointer<pthread_attr_t>,
   _ start_routine: (Argument) -> Result,
   _ arg: Argument
 ) -> (CInt, pthread_t?) {
   let context = PthreadBlockContextImpl(block: start_routine, arg: arg)
   // We hand ownership off to `invokeBlockContext` through its void context
   // argument.
-  let contextAsOpaque = Unmanaged.passRetained(context)
-    .toOpaque()
+  let contextAsOpaque = OpaquePointer(bitPattern: Unmanaged.passRetained(context))
   let contextAsVoidPointer = UnsafeMutablePointer<Void>(contextAsOpaque)
 
-  var threadID = pthread_t()
+  var threadID: pthread_t = _make_pthread_t()
   let result = pthread_create(&threadID, attr,
     invokeBlockContext, contextAsVoidPointer)
   if result == 0 {
@@ -82,17 +81,25 @@ public func _stdlib_pthread_create_block<Argument, Result>(
   }
 }
 
+internal func _make_pthread_t() -> pthread_t {
+#if os(Linux)
+  return pthread_t()
+#else
+  return nil
+#endif
+}
+
 /// Block-based wrapper for `pthread_join`.
 public func _stdlib_pthread_join<Result>(
-  thread: pthread_t,
+  _ thread: pthread_t,
   _ resultType: Result.Type
 ) -> (CInt, Result?) {
-  var threadResultPtr = UnsafeMutablePointer<Void>()
+  var threadResultPtr: UnsafeMutablePointer<Void> = nil
   let result = pthread_join(thread, &threadResultPtr)
   if result == 0 {
-    let threadResult = UnsafeMutablePointer<Result>(threadResultPtr).memory
-    threadResultPtr.destroy()
-    threadResultPtr.dealloc(1)
+    let threadResult = UnsafeMutablePointer<Result>(threadResultPtr).pointee
+    threadResultPtr.deinitialize()
+    threadResultPtr.deallocateCapacity(1)
     return (result, threadResult)
   } else {
     return (result, nil)

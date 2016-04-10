@@ -20,7 +20,7 @@ enum Z {
   init(_ x: Int, _ y: Int) { self = .point(x, y) }
 }
 
-enum Optional<T> {
+enum Optional<T> {  // expected-note {{'T' declared as parameter to type 'Optional'}}
   case none
   case value(T)
 
@@ -38,8 +38,8 @@ var world : String = "world";
 var i : Int
 var z : Z = .none
 
-func acceptZ(z: Z) {}
-func acceptString(s: String) {}
+func acceptZ(_ z: Z) {}
+func acceptString(_ s: String) {}
 
 Point(1, 2)
 var db : Base = d
@@ -57,7 +57,7 @@ acceptString("\(hello), \(world) #\(i)!")
 Optional<Int>(1) // expected-warning{{unused}}
 Optional(1) // expected-warning{{unused}}
 _ = .none as Optional<Int>
-Optional(.none) // expected-error{{type of expression is ambiguous without more context}}
+Optional(.none) // expected-error{{generic parameter 'T' could not be inferred}}
 
 // Interpolation
 "\(hello), \(world) #\(i)!"
@@ -104,9 +104,9 @@ z as Z
 
 // Construction from inouts.
 struct FooRef { }
-struct BarRef { 
-  init(inout x: FooRef) {} 
-  init(inout x: Int) {} 
+struct BarRef {
+  init(x: inout FooRef) {}
+  init(x: inout Int) {}
 }
 var f = FooRef()
 var x = 0
@@ -122,8 +122,8 @@ struct S2 {
   init(i: Int) { }
 }
 
-func getMetatype(i: Int) -> S1.Type { return S1.self }
-func getMetatype(d: Double) -> S2.Type { return S2.self }
+func getMetatype(_ i: Int) -> S1.Type { return S1.self }
+func getMetatype(_ d: Double) -> S2.Type { return S2.self }
 
 var s1 = getMetatype(1).init(i: 5)
 s1 = S1(i: 5)

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -19,13 +19,18 @@
 
 #include "swift/Basic/SourceLoc.h"
 #include "swift/Basic/UUID.h"
+#include "swift/Basic/STLExtras.h"
+#include "swift/Basic/Range.h"
 #include "swift/AST/Identifier.h"
+#include "swift/AST/AttrKind.h"
+#include "swift/AST/ConcreteDeclRef.h"
 #include "swift/AST/KnownProtocols.h"
 #include "swift/AST/Ownership.h"
 #include "swift/AST/PlatformKind.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/TrailingObjects.h"
 #include "clang/Basic/VersionTuple.h"
 
 namespace swift {
@@ -34,55 +39,7 @@ class ASTContext;
 struct PrintOptions;
 class Decl;
 class ClassDecl;
-
-/// The associativity of a binary operator.
-enum class Associativity {
-  /// Non-associative operators cannot be written next to other
-  /// operators with the same precedence.  Relational operators are
-  /// typically non-associative.
-  None,
-
-  /// Left-associative operators associate to the left if written next
-  /// to other left-associative operators of the same precedence.
-  Left,
-
-  /// Right-associative operators associate to the right if written
-  /// next to other right-associative operators of the same precedence.
-  Right
-};
-
-/// The kind of unary operator, if any.
-enum class UnaryOperatorKind : uint8_t {
-  None,
-  Prefix,
-  Postfix
-};
-
-/// Access control levels.
-// These are used in diagnostics, so please do not reorder existing values.
-enum class Accessibility : uint8_t {
-  /// Private access is limited to the current file.
-  Private = 0,
-  /// Internal access is limited to the current module.
-  Internal,
-  /// Public access is not limited.
-  Public
-};
-
-enum class InlineKind : uint8_t {
-  Never = 0,
-  Always = 1
-};
-
-/// This enum represents the possible values of the @effects attribute.
-/// These values are ordered from the strongest guarantee to the weakest,
-/// so please do not reorder existing values.
-enum class EffectsKind : uint8_t {
-  ReadNone,
-  ReadOnly,
-  ReadWrite,
-  Unspecified
-};
+struct TypeLoc;
 
 class InfixData {
   unsigned Precedence : 8;
@@ -145,20 +102,6 @@ namespace IntrinsicPrecedences {
     MaxPrecedence = 255
   };
 }
-
-  
-enum DeclAttrKind : unsigned {
-#define DECL_ATTR(_, NAME, ...) DAK_##NAME,
-#include "swift/AST/Attr.def"
-  DAK_Count
-};
-
-// Define enumerators for each type attribute, e.g. TAK_weak.
-enum TypeAttrKind {
-#define TYPE_ATTR(X) TAK_##X,
-#include "swift/AST/Attr.def"
-  TAK_Count
-};
 
 /// TypeAttributes - These are attributes that may be applied to types.
 class TypeAttributes {
@@ -420,6 +363,10 @@ public:
     return getOptions(getKind());
   }
 
+  /// Prints this attribute (if applicable), returning `true` if anything was
+  /// printed.
+  bool printImpl(ASTPrinter &Printer, const PrintOptions &Options) const;
+
 public:
   DeclAttrKind getKind() const {
     return static_cast<DeclAttrKind>(DeclAttrBits.Kind);
@@ -462,7 +409,7 @@ public:
   static bool canAttributeAppearOnDecl(DeclAttrKind DK, const Decl *D);
 
   /// Returns true if multiple instances of an attribute kind
-  /// can appear on a delcaration.
+  /// can appear on a declaration.
   static bool allowMultipleAttributes(DeclAttrKind DK) {
     return getOptions(DK) & AllowMultipleAttributes;
   }
@@ -571,6 +518,24 @@ public:
   }
 };
 
+/// Defines the @_cdecl attribute.
+class CDeclAttr : public DeclAttribute {
+public:
+  CDeclAttr(StringRef Name, SourceLoc AtLoc, SourceRange Range, bool Implicit)
+    : DeclAttribute(DAK_CDecl, AtLoc, Range, Implicit),
+      Name(Name) {}
+
+  CDeclAttr(StringRef Name, bool Implicit)
+    : CDeclAttr(Name, SourceLoc(), SourceRange(), /*Implicit=*/true) {}
+
+  /// The symbol name.
+  const StringRef Name;
+
+  static bool classof(const DeclAttribute *DA) {
+    return DA->getKind() == DAK_CDecl;
+  }
+};
+
 /// Defines the @_semantics attribute.
 class SemanticsAttr : public DeclAttribute {
 public:
@@ -642,7 +607,7 @@ enum class MinVersionComparison {
   Unavailable,
 
   /// The entity might be unavailable, because it was introduced after
-  /// the minimimum version.
+  /// the minimum version.
   PotentiallyUnavailable,
 
   /// The entity has been obsoleted.
@@ -758,7 +723,10 @@ public:
 };
 
 /// Indicates that the given declaration is visible to Objective-C.
-class ObjCAttr : public DeclAttribute {
+class ObjCAttr final : public DeclAttribute,
+    private llvm::TrailingObjects<ObjCAttr, SourceLoc> {
+  friend TrailingObjects;
+
   /// The Objective-C name associated with this entity, stored in its opaque
   /// representation so that we can use null as an indicator for "no name".
   void *NameData;
@@ -791,7 +759,7 @@ class ObjCAttr : public DeclAttribute {
     unsigned length = 2;
     if (auto name = getName())
       length += name->getNumSelectorPieces();
-    return { reinterpret_cast<SourceLoc *>(this + 1), length };
+    return {getTrailingObjects<SourceLoc>(), length};
   }
 
   /// Retrieve the trailing location information.
@@ -800,7 +768,7 @@ class ObjCAttr : public DeclAttribute {
     unsigned length = 2;
     if (auto name = getName())
       length += name->getNumSelectorPieces();
-    return { reinterpret_cast<const SourceLoc *>(this + 1), length };
+    return {getTrailingObjects<SourceLoc>(), length};
   }
 
 public:
@@ -1104,10 +1072,10 @@ public:
 ///
 /// \code
 /// struct X {
-///   @warn_unused_result(message="this string affects your health")
+///   @warn_unused_result(message: "this string affects your health")
 ///   func methodA() -> String { ... }
 ///
-///   @warn_unused_result(mutable_variant="jumpInPlace")
+///   @warn_unused_result(mutable_variant: "jumpInPlace")
 ///   func jump() -> X { ... }
 ///
 ///   mutating func jumpInPlace() { ... }
@@ -1145,6 +1113,58 @@ public:
 
   static bool classof(const DeclAttribute *DA) {
     return DA->getKind() == DAK_WarnUnusedResult;
+  }
+};
+
+/// The @swift3_migration attribute which describes the transformations
+/// required to migrate the given Swift 2.x API to Swift 3.
+class Swift3MigrationAttr : public DeclAttribute {
+  DeclName Renamed;
+  StringRef Message;
+
+public:
+  Swift3MigrationAttr(SourceLoc atLoc, SourceLoc attrLoc, SourceLoc lParenLoc,
+                      DeclName renamed, StringRef message, SourceLoc rParenLoc,
+                      bool implicit)
+    : DeclAttribute(DAK_Swift3Migration, atLoc, SourceRange(attrLoc, rParenLoc),
+                    implicit),
+      Renamed(renamed), Message(message) { }
+
+  DeclName getRenamed() const { return Renamed; }
+  StringRef getMessage() const { return Message; }
+
+  static bool classof(const DeclAttribute *DA) {
+    return DA->getKind() == DAK_Swift3Migration;
+  }
+};
+
+/// The @_specialize attribute, which forces specialization on the specified
+/// type list.
+class SpecializeAttr : public DeclAttribute {
+  unsigned numTypes;
+  ConcreteDeclRef specializedDecl;
+
+  TypeLoc *getTypeLocData() {
+    return reinterpret_cast<TypeLoc *>(this + 1);
+  }
+
+  SpecializeAttr(SourceLoc atLoc, SourceRange Range,
+                 ArrayRef<TypeLoc> typeLocs);
+
+public:
+  static SpecializeAttr *create(ASTContext &Ctx, SourceLoc atLoc,
+                                SourceRange Range, ArrayRef<TypeLoc> typeLocs);
+
+  ArrayRef<TypeLoc> getTypeLocs() const;
+
+  MutableArrayRef<TypeLoc> getTypeLocs();
+
+  ConcreteDeclRef getConcreteDecl() const { return specializedDecl; }
+
+  void setConcreteDecl(ConcreteDeclRef ref) { specializedDecl = ref; }
+
+  static bool classof(const DeclAttribute *DA) {
+    return DA->getKind() == DAK_Specialize;
   }
 };
 
@@ -1256,6 +1276,34 @@ public:
       if (Attr->getKind() == DK && (Attr->isValid() || AllowInvalid))
         return Attr;
     return nullptr;
+  }
+
+private:
+  /// Predicate used to filter MatchingAttributeRange.
+  template <typename ATTR, bool AllowInvalid> struct ToAttributeKind {
+    ToAttributeKind() {}
+
+    Optional<const DeclAttribute *>
+    operator()(const DeclAttribute *Attr) const {
+      if (isa<ATTR>(Attr) && (Attr->isValid() || AllowInvalid))
+        return Attr;
+      return None;
+    }
+  };
+
+public:
+  template <typename ATTR, bool AllowInvalid>
+  using AttributeKindRange =
+      OptionalTransformRange<llvm::iterator_range<const_iterator>,
+                             ToAttributeKind<ATTR, AllowInvalid>,
+                             const_iterator>;
+
+  /// Return a range with all attributes in DeclAttributes with AttrKind
+  /// ATTR.
+  template <typename ATTR, bool AllowInvalid>
+  AttributeKindRange<ATTR, AllowInvalid> getAttributes() const {
+    return AttributeKindRange<ATTR, AllowInvalid>(
+        make_range(begin(), end()), ToAttributeKind<ATTR, AllowInvalid>());
   }
 
   // Remove the given attribute from the list of attributes. Used when

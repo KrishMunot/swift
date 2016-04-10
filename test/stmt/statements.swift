@@ -3,9 +3,9 @@
 /* block comments */
 /* /* nested too */ */
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
-func f1(a: Int, _ y: Int) {}
+func f1(_ a: Int, _ y: Int) {}
 func f2() {}
 func f3() -> Int {}
 
@@ -13,17 +13,17 @@ func invalid_semi() {
   ; // expected-error {{';' statements are not allowed}} {{3-5=}}
 }
 
-func nested1(x: Int) {
+func nested1(_ x: Int) {
   var y : Int
   
-  func nested2(z: Int) -> Int {
+  func nested2(_ z: Int) -> Int {
     return x+y+z
   }
   
   nested2(1)
 }
 
-func funcdecl5(a: Int, y: Int) {
+func funcdecl5(_ a: Int, y: Int) {
   var x : Int
 
   // a few statements
@@ -54,7 +54,7 @@ func funcdecl5(a: Int, y: Int) {
   }
 
   // FIXME: This diagnostic is terrible - rdar://12939553
-  if x {}   // expected-error {{type 'Int' does not conform to protocol 'BooleanType'}}
+  if x {}   // expected-error {{type 'Int' does not conform to protocol 'Boolean'}}
 
   if true {
     if (B) {
@@ -94,7 +94,7 @@ struct infloopbool {
 }
 
 func infloopbooltest() {
-  if (infloopbool()) {} // expected-error {{type 'infloopbool' does not conform to protocol 'BooleanType'}}
+  if (infloopbool()) {} // expected-error {{type 'infloopbool' does not conform to protocol 'Boolean'}}
 }
 
 // test "builder" API style
@@ -120,23 +120,23 @@ SomeGeneric<Int>
 
 func for_loop() {
   var x = 0
-  for ;; { }
-  for x = 1; x != 42; ++x { }
-  for infloopbooltest(); x != 12; infloopbooltest() {}
+  for ;; { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for x = 1; x != 42; x += 1 { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for infloopbooltest(); x != 12; infloopbooltest() {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
   
   for ; { } // expected-error {{expected ';' in 'for' statement}}
   
-  for var y = 1; y != 42; ++y {}
-  for (var y = 1; y != 42; ++y) {}
+  for var y = 1; y != 42; y += 1 {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for (var y = 1; y != 42; y += 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
   var z = 10
-  for (; z != 0; --z) {}
-  for (z = 10; z != 0; --z) {}
-  for var (a,b) = (0,12); a != b; --b {++a}
-  for (var (a,b) = (0,12); a != b; --b) {++a}
+  for (; z != 0; z -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for (z = 10; z != 0; z -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for var (a,b) = (0,12); a != b; b -= 1 {a += 1} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for (var (a,b) = (0,12); a != b; b -= 1) {a += 1} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
   var j, k : Int
-  for ((j,k) = (0,10); j != k; --k) {}
-  for var i = 0, j = 0; i * j < 10; i++, j++ {}
-  for j = 0, k = 52; j < k; ++j, --k { }
+  for ((j,k) = (0,10); j != k; k -= 1) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for var i = 0, j = 0; i * j < 10; i += 1, j += 1 {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+  for j = 0, k = 52; j < k; j += 1, k -= 1 { } // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
   // rdar://19540536
   // expected-error@+4{{expected var declaration in a 'for' statement}}
   // expected-error@+3{{expression resolves to an unused function}}
@@ -145,7 +145,7 @@ func for_loop() {
   for @ {}
 
   // <rdar://problem/17462274> Is increment in for loop optional?
-  for (let i = 0; i < 10; ) {}
+  for (let i = 0; i < 10; ) {} // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
 }
 
 break // expected-error {{'break' is only allowed inside a loop, if, do, or switch}}
@@ -187,7 +187,7 @@ func tuple_assign() {
 func missing_semicolons() {
   var w = 321
   func g() {}
-  g() ++w             // expected-error{{consecutive statements}} {{6-6=;}}
+  g() w += 1             // expected-error{{consecutive statements}} {{6-6=;}}
   var z = w"hello"    // expected-error{{consecutive statements}} {{12-12=;}}
   class  C {}class  C2 {} // expected-error{{consecutive statements}} {{14-14=;}}
   struct S {}struct S2 {} // expected-error{{consecutive statements}} {{14-14=;}}
@@ -266,7 +266,7 @@ func RepeatWhileStmt1() {
 }
 
 func RepeatWhileStmt2() {
-  repeat // expected-error {{expected '{' after 'repeat'}}
+  repeat // expected-error {{expected '{' after 'repeat'}} expected-error {{expected 'while' after body of 'repeat' statement}}
 }
 
 func RepeatWhileStmt4() {
@@ -274,14 +274,23 @@ func RepeatWhileStmt4() {
   } while + // expected-error {{unary operator cannot be separated from its operand}} {{12-1=}} expected-error {{expected expression in 'repeat-while' condition}}
 }
 
-func brokenSwitch(x: Int) -> Int {
+func brokenSwitch(_ x: Int) -> Int {
   switch x {
-  case .Blah(let rep): // expected-error{{enum case 'Blah' not found in type 'Int'}}
+  case .Blah(var rep): // expected-error{{enum case 'Blah' not found in type 'Int'}}
     return rep
   }
 }
 
-func breakContinue(x : Int) -> Int {
+func switchWithVarsNotMatchingTypes(_ x: Int, y: Int, z: String) -> Int {
+  switch (x,y,z) {
+  case (let a, 0, _), (0, let a, _): // OK
+    return a
+  case (let a, _, _), (_, _, let a): // expected-error {{pattern variable bound to type 'String', expected type 'Int'}}
+    return a
+  }
+}
+
+func breakContinue(_ x : Int) -> Int {
 
 Outer:
   for _ in 0...1000 {
@@ -305,7 +314,7 @@ Loop:  // expected-note {{previously declared here}}
   }
 
 
-  // <rdar://problem/16798323> Following a 'break' statment by another statement on a new line result in an error/fit-it
+  // <rdar://problem/16798323> Following a 'break' statement by another statement on a new line result in an error/fit-it
   switch 5 {
   case 5:
     markUsed("before the break")
@@ -319,7 +328,7 @@ Loop:  // expected-note {{previously declared here}}
   
   // <rdar://problem/16879701> Should be able to pattern match 'nil' against optionals
   switch x {
-  case .Some(42): break
+  case .some(42): break
   case nil: break
   
   }
@@ -331,7 +340,7 @@ enum MyEnumWithCaseLabels {
   case Case(one: String, two: Int)
 }
 
-func testMyEnumWithCaseLabels(a : MyEnumWithCaseLabels) {
+func testMyEnumWithCaseLabels(_ a : MyEnumWithCaseLabels) {
   // <rdar://problem/20135489> Enum case labels are ignored in "case let" statements
   switch a {
   case let .Case(one: _, two: x): break // ok
@@ -345,7 +354,7 @@ func testMyEnumWithCaseLabels(a : MyEnumWithCaseLabels) {
 
 // "defer"
 
-func test_defer(a : Int) {
+func test_defer(_ a : Int) {
   
   defer { VoidReturn1() }
   defer { breakContinue(1)+42 }
@@ -367,14 +376,14 @@ class SomeTestClass {
 }
 
 
-func test_require(x : Int, y : Int??, cond : Bool) {
+func test_require(_ x : Int, y : Int??, cond : Bool) {
   
   // These are all ok.
   guard let a = y else {}
   markUsed(a)
   guard let b = y where cond else {}
   guard case let c = x where cond else {}
-  guard case let Optional.Some(d) = y else {}
+  guard case let Optional.some(d) = y else {}
   guard x != 4, case _ = x else { }
 
 
@@ -403,14 +412,14 @@ func test_is_as_patterns() {
 func matching_pattern_recursion() {
   switch 42 {
   case {  // expected-error {{expression pattern of type '() -> ()' cannot match values of type 'Int'}}
-      for i in zs {  // expected-error {{use of unresolved identifier 'zs'}}
+      for i in zs {
       }
   }: break
   }
 }
 
 // <rdar://problem/18776073> Swift's break operator in switch should be indicated in errors
-func r18776073(a : Int?) {
+func r18776073(_ a : Int?) {
   switch a {
     case nil:   // expected-error {{'case' label in a 'switch' should have at least one executable statement}} {{14-14= break}}
     case _?: break
@@ -419,23 +428,93 @@ func r18776073(a : Int?) {
 
 // <rdar://problem/22491782> unhelpful error message from "throw nil"
 func testThrowNil() throws {
-  throw nil  // expected-error {{cannot infer concrete ErrorType for thrown 'nil' value}}
+  throw nil  // expected-error {{cannot infer concrete ErrorProtocol for thrown 'nil' value}}
 }
 
 
 // <rdar://problem/16650625>
 func for_ignored_lvalue_init() {
   var i = 0
-  for i;  // expected-error {{expression resolves to an unused l-value}}
-    i < 10; ++i {}
+  for i;  // expected-error {{expression resolves to an unused l-value}} expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
+    i < 10; i += 1 {}
 }
 
 // rdar://problem/18643692
 func for_loop_multi_iter() {
-  for (var i = 0, x = 0; i < 10; i++,
+  for (var i = 0, x = 0; i < 10; i += 1, // expected-warning {{C-style for statement is deprecated and will be removed in a future version of Swift}}
        x) { // expected-error {{expression resolves to an unused l-value}}
-    --x
+    x -= 1
+  }
+}
+
+// rdar://problem/23684220
+// Even if the condition fails to typecheck, save it in the AST anyway; the old
+// condition may have contained a SequenceExpr.
+func r23684220(_ b: Any) {
+  if let _ = b ?? b {} // expected-error {{initializer for conditional binding must have Optional type, not 'Any' (aka 'protocol<>')}}
+}
+
+
+// <rdar://problem/21080671> QoI: try/catch (instead of do/catch) creates silly diagnostics
+func f21080671() {
+  try {  // expected-error {{the 'do' keyword is used to specify a 'catch' region}} {{3-6=do}}
+  } catch { }
+  
+  
+  try {  // expected-error {{the 'do' keyword is used to specify a 'catch' region}} {{3-6=do}}
+    f21080671()
+  } catch let x as Int {
+  } catch {
+  }
+}
+
+// <rdar://problem/24467411> QoI: Using "&& #available" should fixit to comma
+// https://twitter.com/radexp/status/694561060230184960
+func f(_ x : Int, y : Int) {
+  if x == y && #available(iOS 52, *) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{13-15=,}}
+  if #available(iOS 52, *) && x == y {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{28-30=,}}
+
+  // https://twitter.com/radexp/status/694790631881883648
+  if x == y && let _ = Optional(y) {}  // expected-error {{expected ',' joining parts of a multi-clause condition}} {{13-15=,}}
+}
+
+
+
+// <rdar://problem/25178926> QoI: Warn about cases where switch statement "ignores" where clause
+enum Type {
+  case Foo
+  case Bar
+}
+func r25178926(_ a : Type) {
+  switch a {
+  case .Foo, .Bar where 1 != 100:
+    // expected-warning @-1 {{'where' only applies to the second pattern match in this case}}
+    // expected-note @-2 {{disambiguate by adding a line break between them if this is desired}} {{14-14=\n       }}
+    // expected-note @-3 {{duplicate the 'where' on both patterns to check both patterns}} {{12-12= where 1 != 100}}
+    break
+  }
+
+  switch a {
+  case .Foo: break
+  case .Bar where 1 != 100: break
+  }
+
+  switch a {
+  case .Foo,  // no warn
+       .Bar where 1 != 100:
+    break
+  }
+
+  switch a {
+  case .Foo where 1 != 100, .Bar where 1 != 100:
+    break
   }
 }
 
 
+
+// Errors in case syntax
+class
+case, // expected-error {{expected identifier in enum 'case' declaration}} expected-error {{expected pattern}}
+case  // expected-error {{expected identifier after comma in enum 'case' declaration}} expected-error {{expected identifier in enum 'case' declaration}} expected-error {{enum 'case' is not allowed outside of an enum}} expected-error {{expected pattern}}
+// NOTE: EOF is important here to properly test a code path that used to crash the parser

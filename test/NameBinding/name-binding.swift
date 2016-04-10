@@ -12,7 +12,7 @@ var importedtype : Int
 
 // Imported from enumtest module.
 import enum enumtest.unionSearchFlags
-var importedunion : unionSearchFlags = .Backwards
+var importedunion: unionSearchFlags = .backwards
 
 
 // This shouldn't be imported from data.
@@ -50,12 +50,12 @@ func test_varname_binding() {
   var (d, e) = (c.1, c.0)
   var ((), (g1, g2), h) = ((), (e, d), e)
   var (j, k, l) = callee1()
-  var (m, n) = callee1() // expected-error{{different number of elements}}
-  var (o, p, q, r) = callee1() // expected-error{{different number of elements}}
+  var (m, n) = callee1() // expected-error{{'(Int, Int, Int)' is not convertible to '(_, _)', tuples have a different number of elements}}
+  var (o, p, q, r) = callee1() // expected-error{{'(Int, Int, Int)' is not convertible to '(_, _, _, _)', tuples have a different number of elements}}
 }
 
 //===----------------------------------------------------------------------===//
-// ForwardIndexType referencing of types.
+// ForwardIndex referencing of types.
 //===----------------------------------------------------------------------===//
 
 // We don't allow namebinding to look forward past a var declaration in the
@@ -83,7 +83,7 @@ enum y {
 
 
 //===----------------------------------------------------------------------===//
-// ForwardIndexType referencing of values.
+// ForwardIndex referencing of values.
 //===----------------------------------------------------------------------===//
 
 func func2() {
@@ -176,8 +176,8 @@ postfix operator +++ {}
 prefix operator ++ {}
 postfix operator ++ {}
 
-prefix func +++(inout a: Int) { a += 2 }
-postfix func +++(inout a: Int) { a += 2 }
+prefix func +++(a: inout Int) { a += 2 }
+postfix func +++(a: inout Int) { a += 2 }
 
 var test = 0
 +++test
@@ -206,4 +206,26 @@ func questionablyValidForwardReference() { print(qvfrVar, terminator: ""); }; va
 
 // FIXME: This should warn too.
 print(forwardReferenceVar, terminator: ""); var forwardReferenceVar: Int = 0
+
+
+
+// <rdar://problem/23248290> Name lookup: "Cannot convert type 'Int' to expected argument type 'Int'" while trying to initialize ivar of generic type in class scope
+// https://gist.github.com/erynofwales/61768899502b7ac83c6e
+struct Matrix4<T: FloatingPoint> {
+  static func size() -> Int {}
+  
+  private var data: Int = Matrix4.size()   // Ok: Matrix4<T>
+  
+  init() {
+    data = Matrix4.size()  // Ok: Matrix4<T>
+  }
+}
+
+// <rdar://problem/19558785> for-in collection/where expressions are parsed with pattern variables in scope
+func r19558785() {
+  let b = 10
+  for b in 0...b {
+    b
+  }
+}
 

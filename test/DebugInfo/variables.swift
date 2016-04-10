@@ -3,7 +3,7 @@
 // Ensure that the debug info we're emitting passes the back end verifier.
 // RUN: %target-swift-frontend %s -g -S -o - | FileCheck %s --check-prefix ASM-%target-object-format
 // ASM-macho: .section __DWARF,__debug_info
-// ASM-elf: .section .debug_info,"",@progbits
+// ASM-elf: .section .debug_info,"",{{[@%]}}progbits
 
 // Test variables-interpreter.swift runs this code with `swift -g -i`.
 // Test variables-repl.swift runs this code with `swift -g < variables.swift`.
@@ -11,17 +11,17 @@
 // CHECK-DAG: ![[TLC:.*]] = !DIModule({{.*}}, name: "variables"
 
 // Global variables.
-var glob_i8:   Int8 = 8;
+var glob_i8:   Int8 = 8
 // CHECK-DAG: !DIGlobalVariable(name: "glob_i8",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[I8:[^,]+]]
-var glob_i16:  Int16 = 16;
+var glob_i16:  Int16 = 16
 // CHECK-DAG: !DIGlobalVariable(name: "glob_i16",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[I16:[^,]+]]
-var glob_i32:  Int32 = 32;
+var glob_i32:  Int32 = 32
 // CHECK-DAG: !DIGlobalVariable(name: "glob_i32",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[I32:[^,]+]]
-var glob_i64:  Int64 = 64;
+var glob_i64:  Int64 = 64
 // CHECK-DAG: !DIGlobalVariable(name: "glob_i64",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[I64:[^,]+]]
-var glob_f:    Float = 2.89;
+var glob_f:    Float = 2.89
 // CHECK-DAG: !DIGlobalVariable(name: "glob_f",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[F:[^,]+]]
-var glob_d:    Double = 3.14;
+var glob_d:    Double = 3.14
 // CHECK-DAG: !DIGlobalVariable(name: "glob_d",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[D:[^,]+]]
 var glob_b:    Bool = true
 // CHECK-DAG: !DIGlobalVariable(name: "glob_b",{{.*}} scope: ![[TLC]],{{.*}} line: [[@LINE-1]],{{.*}} type: ![[B:[^,]+]]
@@ -44,13 +44,13 @@ var unused: Int32 = -1
 
 
 // Stack variables.
-func foo(dt: Float) -> Float {
+func foo(_ dt: Float) -> Float {
   // CHECK-DAG: call void @llvm.dbg.declare
   // CHECK-DAG: !DILocalVariable(name: "f"
-  var f: Float = 9.78;
+  var f: Float = 9.78
   // CHECK-DAG: !DILocalVariable(name: "r"
-  var r: Float = f*dt;
-  return r;
+  var r: Float = f*dt
+  return r
 }
 
 var g = foo(1.0);
@@ -62,7 +62,7 @@ var tuple: (Int, Bool) = (1, true)
 // CHECK-DAG: ![[ELEMS]] = !{![[MI64:[0-9]+]], ![[MB:[0-9]+]]}
 // CHECK-DAG: ![[MI64]] = !DIDerivedType(tag: DW_TAG_member,{{.*}} baseType: !"_TtSi"
 // CHECK-DAG: ![[MB]] = !DIDerivedType(tag: DW_TAG_member,{{.*}} baseType: ![[B]]
-func myprint(p: (i: Int, b: Bool)) {
+func myprint(_ p: (i: Int, b: Bool)) {
      print("\(p.i) -> \(p.b)")
 }
 
@@ -76,7 +76,7 @@ myprint(tuple)
 var array_of_tuples : [(a : Int, b : Int)] = [(1,2)]
 var twod : [[Int]] = [[1]]
 
-func bar( x: [(a : Int, b : Int)], y: [[Int]] ) {
+func bar(_ x: [(a : Int, b : Int)], y: [[Int]]) {
 }
 
 
@@ -85,7 +85,7 @@ func bar( x: [(a : Int, b : Int)], y: [[Int]] ) {
 // CHECK-DAG: ![[PTY]] = !DIDerivedType(tag: DW_TAG_typedef, name: "_Tta{{9variables|4main}}5Point",{{.*}} baseType: ![[PTUP]]
 typealias Point = (x: Double, y: Double, z: Double)
 var P:Point = (1, 2, 3)
-func myprint(p: (x: Double, y: Double, z: Double)) {
+func myprint(_ p: (x: Double, y: Double, z: Double)) {
      print("(\(p.x), \(p.y), \(p.z))")
 }
 myprint(P)
@@ -105,7 +105,7 @@ enum TriValue {
 // CHECK-DAG: !DIGlobalVariable(name: "unknown",{{.*}} type: !"_TtO{{9variables|4main}}8TriValue"
 // CHECK-DAG: !DICompositeType(tag: DW_TAG_union_type, name: "TriValue", {{.*}}identifier: "_TtO{{9variables|4main}}8TriValue"
 var unknown = TriValue.top
-func myprint(value: TriValue) {
+func myprint(_ value: TriValue) {
      switch value {
      case TriValue.false_: print("false")
      case TriValue.true_:  print("true")

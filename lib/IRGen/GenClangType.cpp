@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -202,18 +202,20 @@ clang::CanQualType GenClangType::visitStructType(CanStructType type) {
   } while (false)
 
   CHECK_NAMED_TYPE("CGFloat", convertMemberType(swiftDecl, "NativeType"));
-  CHECK_NAMED_TYPE("COpaquePointer", ctx.VoidPtrTy);
+  CHECK_NAMED_TYPE("OpaquePointer", ctx.VoidPtrTy);
   CHECK_NAMED_TYPE("CVaListPointer", getClangDecayedVaListType(ctx));
   CHECK_NAMED_TYPE("DarwinBoolean", ctx.UnsignedCharTy);
-  CHECK_NAMED_TYPE("NSZone", ctx.VoidPtrTy);
+  CHECK_NAMED_TYPE(swiftDecl->getASTContext().getSwiftName(
+                     KnownFoundationEntity::NSZone),
+                   ctx.VoidPtrTy);
   CHECK_NAMED_TYPE("ObjCBool", ctx.ObjCBuiltinBoolTy);
   CHECK_NAMED_TYPE("Selector", getClangSelectorType(ctx));
 #undef CHECK_NAMED_TYPE
 
   // Map vector types to the corresponding C vectors.
-#define MAP_SIMD_TYPE(TYPE_NAME, CLANG_KIND)                           \
+#define MAP_SIMD_TYPE(TYPE_NAME, _, BUILTIN_KIND)                      \
   if (name.startswith(#TYPE_NAME)) {                                   \
-    return getClangVectorType(ctx, clang::BuiltinType::CLANG_KIND,     \
+    return getClangVectorType(ctx, clang::BuiltinType::BUILTIN_KIND,   \
                               clang::VectorType::GenericVector,        \
                               name.drop_front(sizeof(#TYPE_NAME)-1));  \
   }
@@ -528,13 +530,19 @@ clang::CanQualType GenClangType::visitSILFunctionType(CanSILFunctionType type) {
   }
   
   // Convert the return and parameter types.
-  auto resultType = Converter.convert(IGM,
-                type->getSemanticResultSILType().getSwiftRValueType());
-  if (resultType.isNull())
-    return clang::CanQualType();
+  auto allResults = type->getAllResults();
+  assert(allResults.size() <= 1 && "multiple results with C convention");
+  clang::QualType resultType;
+  if (allResults.empty()) {
+    resultType = clangCtx.VoidTy;
+  } else {
+    resultType = Converter.convert(IGM, allResults[0].getType());
+    if (resultType.isNull())
+      return clang::CanQualType();
+  }
   
   SmallVector<clang::QualType, 4> paramTypes;
-  for (auto paramTy : type->getParametersWithoutIndirectResult()) {
+  for (auto paramTy : type->getParameters()) {
     // Blocks should only take direct +0 parameters.
     switch (paramTy.getConvention()) {
     case ParameterConvention::Direct_Guaranteed:
@@ -548,7 +556,6 @@ clang::CanQualType GenClangType::visitSILFunctionType(CanSILFunctionType type) {
     case ParameterConvention::Indirect_In:
     case ParameterConvention::Indirect_Inout:
     case ParameterConvention::Indirect_InoutAliasable:
-    case ParameterConvention::Indirect_Out:
     case ParameterConvention::Indirect_In_Guaranteed:
       llvm_unreachable("block takes indirect parameter");
     }
@@ -723,9 +730,15 @@ clang::CanQualType IRGenModule::getClangType(SILParameterInfo params) {
   auto clangType = getClangType(params.getSILType());
   // @block_storage types must be @inout_aliasable and have
   // special lowering
-  if (params.isIndirectMutating() &&
-      !params.getSILType().is<SILBlockStorageType>()) {
-    return getClangASTContext().getPointerType(clangType);
+  if (!params.getSILType().is<SILBlockStorageType>()) {
+    if (params.isIndirectMutating()) {
+      return getClangASTContext().getPointerType(clangType);
+    }
+    if (params.isIndirect()) {
+      auto constTy =
+        getClangASTContext().getCanonicalType(clangType.withConst());
+      return getClangASTContext().getPointerType(constTy);
+    }
   }
   return clangType;
 }

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -22,6 +22,17 @@ namespace llvm {
 }
 
 namespace swift {
+
+  enum class DarwinPlatformKind : unsigned {
+    MacOS,
+    IPhoneOS,
+    IPhoneOSSimulator,
+    TvOS,
+    TvOSSimulator,
+    WatchOS,
+    WatchOSSimulator
+  };
+
   /// Returns true if the given triple represents iOS running in a simulator.
   bool tripleIsiOSSimulator(const llvm::Triple &triple);
 
@@ -43,7 +54,10 @@ namespace swift {
   /// If the triple does not correspond to a known platform, the empty string is
   /// returned.
   StringRef getPlatformNameForTriple(const llvm::Triple &triple);
-}
+
+  /// Returns the platform Kind for Darwin triples.
+  DarwinPlatformKind getDarwinPlatformKind(const llvm::Triple &triple);
+} // end namespace swift
 
 #endif // SWIFT_BASIC_PLATFORM_H
 

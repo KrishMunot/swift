@@ -1,11 +1,17 @@
 <img src="https://swift.org/assets/images/swift.svg" alt="Swift logo" height="70" >
 # Swift Programming Language
 
+|| **Status** |
+|---|---|
+|**OS X**         |[![Build Status](https://ci.swift.org/job/oss-swift-incremental-RA-osx/badge/icon)](https://ci.swift.org/job/oss-swift-incremental-RA-osx)|
+|**Ubuntu 14.04** |[![Build Status](https://ci.swift.org/job/oss-swift-incremental-RA-linux-ubuntu-14_04/badge/icon)](https://ci.swift.org/job/oss-swift-incremental-RA-linux-ubuntu-14_04)|
+|**Ubuntu 15.10** |[![Build Status](https://ci.swift.org/job/oss-swift-incremental-RA-linux-ubuntu-15_10/badge/icon)](https://ci.swift.org/job/oss-swift-incremental-RA-linux-ubuntu-15_10)|
+
 **Welcome to Swift!**
 
 Swift is a high-performance system programming language.  It has a clean
 and modern syntax, offers seamless access to existing C and Objective-C code
-and frameworks, and is memory safe (by default).
+and frameworks, and is memory safe by default.
 
 Although inspired by Objective-C and many other languages, Swift is not itself a
 C-derived language. As a complete and independent language, Swift packages core
@@ -17,14 +23,15 @@ modules, eliminating the need for headers and the code duplication they entail.
 ## Documentation
 
 To read the documentation, start by installing the
-[Sphinx](http://sphinx-doc.org) documentation generator tool (just run
-`easy_install -U Sphinx` from the command line and you're good to go). Once you
- have that, you can build the Swift documentation by going into `docs` and
-typing `make`. This compiles the `.rst` files in the `docs` directory into
-HTML in the `docs/_build/html` directory.
+[Sphinx](http://sphinx-doc.org) documentation generator tool by running the command:
 
-A potentially useful document to start is `docs/LangRef`, which gives a low level
-tour of how the language works from the implementation perspective.
+`easy_install -U Sphinx==1.3.4`
+
+More recent versions are currently **not supported.**
+
+Once complete, you can build the Swift documentation by changing directory into
+`docs` and typing `make`. This compiles the `.rst` files in the `docs` directory
+into HTML in the `docs/_build/html` directory.
 
 Many of the docs are out of date, but you can see some historical design
 documents in the `docs` directory.
@@ -51,72 +58,70 @@ For OS X, you need [the latest Xcode](https://developer.apple.com/xcode/download
 
 For Ubuntu, you'll need the following development dependencies:
 
-    sudo apt-get install git cmake ninja-build clang uuid-dev libicu-dev icu-devtools libbsd-dev libedit-dev libxml2-dev libsqlite3-dev swig libpython-dev libncurses5-dev pkg-config
+    sudo apt-get install git cmake ninja-build clang python uuid-dev libicu-dev icu-devtools libbsd-dev libedit-dev libxml2-dev libsqlite3-dev swig libpython-dev libncurses5-dev pkg-config
 
-Note: LLDB currently requires at least swig-1.3.40 but will successfully build
+**Note:** LLDB currently requires at least `swig-1.3.40` but will successfully build
 with version 2 shipped with Ubuntu.
 
 If you are building on Ubuntu 14.04 LTS, you'll need to upgrade your clang
 compiler for C++14 support and create a symlink:
 
-     sudo apt-get install clang-3.6
-     sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.6 100
-     sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.6 100
+    sudo apt-get install clang-3.6
+    sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.6 100
+    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.6 100
 
 ### Getting Sources for Swift and Related Projects
 
-For those checking out sources as read-only:
+**Via HTTPS**  For those checking out sources as read-only, HTTPS works best:
 
-     git clone https://github.com/apple/swift.git swift
-     git clone https://github.com/apple/swift-llvm.git llvm
-     git clone https://github.com/apple/swift-clang.git clang
-     git clone https://github.com/apple/swift-lldb.git lldb
-     git clone https://github.com/apple/swift-cmark.git cmark
-     git clone https://github.com/apple/swift-llbuild.git llbuild
-     git clone https://github.com/apple/swift-package-manager.git swiftpm
-     git clone https://github.com/apple/swift-corelibs-xctest.git
-     git clone https://github.com/apple/swift-corelibs-foundation.git
+    git clone https://github.com/apple/swift.git
+    cd swift
+    ./utils/update-checkout --clone
 
-For those who plan on regularly making direct commits, cloning over
-SSH may provide a better experience (which requires uploading
-SSH keys to GitHub):
+**Via SSH**  For those who plan on regularly making direct commits,
+cloning over SSH may provide a better experience (which requires
+uploading SSH keys to GitHub):
 
-     git clone git@github.com:apple/swift.git swift
-     git clone git@github.com:apple/swift-llvm.git llvm
-     git clone git@github.com:apple/swift-clang.git clang
-     git clone git@github.com:apple/swift-lldb.git lldb
-     git clone git@github.com:apple/swift-cmark.git cmark
-     git clone git@github.com:apple/swift-llbuild.git llbuild
-     git clone git@github.com:apple/swift-package-manager.git swiftpm
-     git clone git@github.com:apple/swift-corelibs-xctest.git
-     git clone git@github.com:apple/swift-corelibs-foundation.git
+    git clone git@github.com:apple/swift.git
+    cd swift
+    ./utils/update-checkout --clone-with-ssh
 
+#### CMake
 [CMake](http://cmake.org) is the core infrastructure used to configure builds of
 Swift and its companion projects; at least version 2.8.12.2 is required. Your
 favorite Linux distribution likely already has a CMake package you can install.
-On OS X, you can download the [CMake Binary Distribution](https://cmake.org/install),
-bundled as an application, copy it to /Applications, and add the embedded
+On OS X, you can download the [CMake Binary Distribution](https://cmake.org/download),
+bundled as an application, copy it to `/Applications`, and add the embedded
 command line tools to your `PATH`:
 
     export PATH=/Applications/CMake.app/Contents/bin:$PATH
 
+#### Ninja
 [Ninja](https://ninja-build.org) is the current recommended build system
 for building Swift and is the default configuration generated by CMake. If
 you're on OS X or don't install it as part of your Linux distribution, clone
 it next to the other projects and it will be bootstrapped automatically:
 
-    git clone https://github.com/ninja-build/ninja.git
+##### Build from source
+**Via HTTPS**
 
-or
+    git clone https://github.com/ninja-build/ninja.git && cd ninja
+    git checkout release
+    cat README
 
-    git clone git@github.com:ninja-build/ninja.git
+**Via SSH**
 
-You can also install CMake and Ninja on OS X using a third-party
-packaging tool like [Homebrew](http://brew.sh)…
+    git clone git@github.com:ninja-build/ninja.git && cd ninja
+    git checkout release
+    cat README
+
+#### Install via third-party packaging tool (OS X only)
+
+**[Homebrew](http://brew.sh/)**
 
     brew install cmake ninja
 
-…or [MacPorts](https://macports.org).
+**[MacPorts](https://macports.org)**
 
     sudo port install cmake ninja
 
@@ -134,28 +139,20 @@ To find out more:
 Note: Arguments after "--" above are forwarded to `build-script-impl`, which is
 the ultimate shell script that invokes the actual build and test commands.
 
-A basic command to build Swift and run basic tests with Ninja:
+A basic command to build Swift with optimizations and run basic tests with
+Ninja:
 
-    utils/build-script -t
+    utils/build-script -r -t
 
 ## Developing Swift in Xcode
 
+`build-script` can also generate Xcode projects:
+
+    utils/build-script -x
+
 The Xcode IDE can be used to edit the Swift source code, but it is not currently
-fully supported as a build environment for SDKs other than OS X. If you'd like
-to build for other SDKs but still use Xcode, once you've built Swift using Ninja
-or one of the other supported CMake generators, you can set up an IDE-only Xcode
-environment using the build-script's `-X` flag:
-
-    utils/build-script -X --skip-build -- --reconfigure
-
-The `--skip-build` flag tells `build-script` to only generate the project,
-not build it in its entirety. A bare minimum of LLVM tools will build in order
-to configure the Xcode projects.
-
-The `--reconfigure` flag tells `build-script-impl` to run the CMake configuration
-step even if there is a cached configuration. As you develop in Xcode, you may
-need to rerun this from time to time to refresh your generated Xcode project,
-picking up new targets, file removals, or file additions.
+fully supported as a build environment for SDKs other than OS X. If you need to
+work with other SDKs, you'll need to create a second build using Ninja.
 
 ## Testing Swift
 

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -10,55 +10,55 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// Supplies convenient conformance to `SetAlgebraType` for any type
-/// whose `RawValue` is a `BitwiseOperationsType`.  For example:
+/// Supplies convenient conformance to `SetAlgebra` for any type
+/// whose `RawValue` is a `BitwiseOperations`.  For example:
 ///
-///     struct PackagingOptions : OptionSetType {
+///     struct PackagingOptions : OptionSet {
 ///       let rawValue: Int
 ///       init(rawValue: Int) { self.rawValue = rawValue }
 ///     
-///       static let Box = PackagingOptions(rawValue: 1)
-///       static let Carton = PackagingOptions(rawValue: 2)
-///       static let Bag = PackagingOptions(rawValue: 4)
-///       static let Satchel = PackagingOptions(rawValue: 8)
-///       static let BoxOrBag: PackagingOptions = [Box, Bag]
-///       static let BoxOrCartonOrBag: PackagingOptions = [Box, Carton, Bag]
+///       static let box = PackagingOptions(rawValue: 1)
+///       static let carton = PackagingOptions(rawValue: 2)
+///       static let bag = PackagingOptions(rawValue: 4)
+///       static let satchel = PackagingOptions(rawValue: 8)
+///       static let boxOrBag: PackagingOptions = [box, bag]
+///       static let boxOrCartonOrBag: PackagingOptions = [box, carton, bag]
 ///     }
 ///
 /// In the example above, `PackagingOptions.Element` is the same type
 /// as `PackagingOptions`, and instance `a` subsumes instance `b` if
 /// and only if `a.rawValue & b.rawValue == b.rawValue`.
-public protocol OptionSetType : SetAlgebraType, RawRepresentable {
+public protocol OptionSet : SetAlgebra, RawRepresentable {
   // We can't constrain the associated Element type to be the same as
   // Self, but we can do almost as well with a default and a
   // constrained extension
   
   /// An `OptionSet`'s `Element` type is normally `Self`.
-  typealias Element = Self
+  associatedtype Element = Self
 
   // FIXME: This initializer should just be the failable init from
   // RawRepresentable. Unfortunately, current language limitations
   // that prevent non-failable initializers from forwarding to
   // failable ones would prevent us from generating the non-failing
-  // default (zero-argument) initializer.  Since OptionSetType's main
-  // purpose is to create convenient conformances to SetAlgebraType,
+  // default (zero-argument) initializer.  Since OptionSet's main
+  // purpose is to create convenient conformances to SetAlgebra,
   // we opt for a non-failable initializer.
   
   /// Convert from a value of `RawValue`, succeeding unconditionally.
   init(rawValue: RawValue)
 }
 
-/// `OptionSetType` requirements for which default implementations
+/// `OptionSet` requirements for which default implementations
 /// are supplied.
 ///
-/// - Note: A type conforming to `OptionSetType` can implement any of
+/// - Note: A type conforming to `OptionSet` can implement any of
 ///  these initializers or methods, and those implementations will be
 ///  used in lieu of these defaults.
-extension OptionSetType {
+extension OptionSet {
   /// Returns the set of elements contained in `self`, in `other`, or in
   /// both `self` and `other`.
   @warn_unused_result
-  public func union(other: Self) -> Self {
+  public func union(_ other: Self) -> Self {
     var r: Self = Self(rawValue: self.rawValue)
     r.unionInPlace(other)
     return r
@@ -66,7 +66,7 @@ extension OptionSetType {
   
   /// Returns the set of elements contained in both `self` and `other`.
   @warn_unused_result
-  public func intersect(other: Self) -> Self {
+  public func intersect(_ other: Self) -> Self {
     var r = Self(rawValue: self.rawValue)
     r.intersectInPlace(other)
     return r
@@ -75,25 +75,25 @@ extension OptionSetType {
   /// Returns the set of elements contained in `self` or in `other`,
   /// but not in both `self` and `other`.
   @warn_unused_result
-  public func exclusiveOr(other: Self) -> Self {
+  public func exclusiveOr(_ other: Self) -> Self {
     var r = Self(rawValue: self.rawValue)
     r.exclusiveOrInPlace(other)
     return r
   }
 }
 
-/// `OptionSetType` requirements for which default implementations are
+/// `OptionSet` requirements for which default implementations are
 /// supplied when `Element == Self`, which is the default.
 ///
-/// - Note: A type conforming to `OptionSetType` can implement any of
+/// - Note: A type conforming to `OptionSet` can implement any of
 ///   these initializers or methods, and those implementations will be
 ///   used in lieu of these defaults.
-extension OptionSetType where Element == Self {
+extension OptionSet where Element == Self {
   /// Returns `true` if `self` contains `member`.
   ///
   /// - Equivalent to `self.intersect([member]) == [member]`
   @warn_unused_result
-  public func contains(member: Self) -> Bool {
+  public func contains(_ member: Self) -> Bool {
     return self.isSupersetOf(member)
   }
   
@@ -101,7 +101,7 @@ extension OptionSetType where Element == Self {
   ///
   /// - Equivalent to `self.unionInPlace([member])`
   /// - Postcondition: `self.contains(member)`
-  public mutating func insert(member: Element) {
+  public mutating func insert(_ member: Element) {
     self.unionInPlace(member)
   }
   
@@ -109,15 +109,16 @@ extension OptionSetType where Element == Self {
   /// Otherwise, return `nil`.
   ///
   /// - Postcondition: `self.intersect([member]).isEmpty`
-  public mutating func remove(member: Element) -> Element? {
+  @discardableResult
+  public mutating func remove(_ member: Element) -> Element? {
     let r = isSupersetOf(member) ? Optional(member) : nil
     self.subtractInPlace(member)
     return r
   }
 }
 
-/// `OptionSetType` requirements for which default implementations are
-/// supplied when `RawValue` conforms to `BitwiseOperationsType`,
+/// `OptionSet` requirements for which default implementations are
+/// supplied when `RawValue` conforms to `BitwiseOperations`,
 /// which is the usual case.  Each distinct bit of an option set's
 /// `.rawValue` corresponds to a disjoint element of the option set.
 ///
@@ -125,10 +126,10 @@ extension OptionSetType where Element == Self {
 /// - `intersection` is implemented as a bitwise "and" (`|`) of `rawValue`s
 /// - `exclusiveOr` is implemented as a bitwise "exclusive or" (`^`) of `rawValue`s
 ///
-/// - Note: A type conforming to `OptionSetType` can implement any of
+/// - Note: A type conforming to `OptionSet` can implement any of
 ///   these initializers or methods, and those implementations will be
 ///   used in lieu of these defaults.
-extension OptionSetType where RawValue : BitwiseOperationsType {
+extension OptionSet where RawValue : BitwiseOperations {
   /// Create an empty instance.
   ///
   /// - Equivalent to `[] as Self`
@@ -140,7 +141,7 @@ extension OptionSetType where RawValue : BitwiseOperationsType {
   ///
   /// - Equivalent to replacing `self` with `self.union(other)`.
   /// - Postcondition: `self.isSupersetOf(other)`
-  public mutating func unionInPlace(other: Self) {
+  public mutating func unionInPlace(_ other: Self) {
     self = Self(rawValue: self.rawValue | other.rawValue)
   }
   
@@ -149,7 +150,7 @@ extension OptionSetType where RawValue : BitwiseOperationsType {
   ///
   /// - Equivalent to replacing `self` with `self.intersect(other)`
   /// - Postcondition: `self.isSubsetOf(other)`
-  public mutating func intersectInPlace(other: Self) {
+  public mutating func intersectInPlace(_ other: Self) {
     self = Self(rawValue: self.rawValue & other.rawValue)
   }
   
@@ -157,10 +158,11 @@ extension OptionSetType where RawValue : BitwiseOperationsType {
   /// either `self` or `other`, but not both.
   ///
   /// - Equivalent to replacing `self` with `self.exclusiveOr(other)`
-  public mutating func exclusiveOrInPlace(other: Self) {
+  public mutating func exclusiveOrInPlace(_ other: Self) {
     self = Self(rawValue: self.rawValue ^ other.rawValue)
   }
 }
 
-@available(*, unavailable, renamed="OptionSetType")
-public typealias RawOptionSetType = OptionSetType
+@available(*, unavailable, renamed: "OptionSet")
+public typealias OptionSetType = OptionSet
+

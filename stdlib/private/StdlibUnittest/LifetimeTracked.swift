@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -10,17 +10,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-public final class LifetimeTracked : ForwardIndexType, CustomStringConvertible {
+public final class LifetimeTracked : ForwardIndex, CustomStringConvertible {
   public init(_ value: Int, identity: Int = 0) {
-    ++LifetimeTracked.instances
-    serialNumber = ++LifetimeTracked._nextSerialNumber
+    LifetimeTracked.instances += 1
+    LifetimeTracked._nextSerialNumber += 1
+    serialNumber = LifetimeTracked._nextSerialNumber
     self.value = value
     self.identity = identity
   }
 
   deinit {
     assert(serialNumber > 0, "double destruction!")
-    --LifetimeTracked.instances
+    LifetimeTracked.instances -= 1
     serialNumber = -serialNumber
   }
 
@@ -31,7 +32,7 @@ public final class LifetimeTracked : ForwardIndexType, CustomStringConvertible {
 
   /// Returns the next consecutive value after `self`.
   ///
-  /// Requires: the next value is representable.
+  /// Precondition: the next value is representable.
   public func successor() -> LifetimeTracked {
     return LifetimeTracked(self.value.successor())
   }

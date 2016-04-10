@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -71,6 +71,9 @@ bool swift::removeOverriddenDecls(SmallVectorImpl<ValueDecl*> &decls) {
       // A.init are in the chain. Make sure we still remove A.init from the
       // set in this case.
       if (decl->getFullName().getBaseName() == ctx.Id_init) {
+        /// FIXME: Avoid the possibility of an infinite loop by fixing the root
+        ///        cause instead (incomplete circularity detection).
+        assert(decl != overrides && "Circular class inheritance?");
         decl = overrides;
         continue;
       }
@@ -222,11 +225,11 @@ bool swift::removeShadowedDecls(SmallVectorImpl<ValueDecl*> &decls,
         // If one declaration is in a protocol or extension thereof and the
         // other is not, prefer the one that is not.
         if ((bool)firstDecl->getDeclContext()
-              ->isProtocolOrProtocolExtensionContext()
+              ->getAsProtocolOrProtocolExtensionContext()
               != (bool)secondDecl->getDeclContext()
-                   ->isProtocolOrProtocolExtensionContext()) {
+                   ->getAsProtocolOrProtocolExtensionContext()) {
           if (firstDecl->getDeclContext()
-                ->isProtocolOrProtocolExtensionContext()) {
+                ->getAsProtocolOrProtocolExtensionContext()) {
             shadowed.insert(firstDecl);
             break;
           } else {
@@ -421,8 +424,8 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
           localVal.visit(AFD->getBody());
           if (!Results.empty())
             return;
-          for (Pattern *P : AFD->getBodyParamPatterns())
-            localVal.checkPattern(P, DeclVisibilityKind::FunctionParameter);
+          for (auto *PL : AFD->getParameterLists())
+            localVal.checkParameterList(PL);
           if (!Results.empty())
             return;
         }
@@ -430,7 +433,7 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
           isCascadingUse = AFD->isCascadingContextForLookup(false);
 
         if (AFD->getExtensionType()) {
-          if (AFD->getDeclContext()->isProtocolOrProtocolExtensionContext()) {
+          if (AFD->getDeclContext()->getAsProtocolOrProtocolExtensionContext()) {
             ExtendedType = AFD->getDeclContext()->getProtocolSelf()
                              ->getArchetype();
 
@@ -468,8 +471,7 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
             localVal.visit(CE->getBody());
             if (!Results.empty())
               return;
-            localVal.checkPattern(CE->getParams(),
-                                  DeclVisibilityKind::FunctionParameter);
+            localVal.checkParameterList(CE->getParameters());
             if (!Results.empty())
               return;
           }
@@ -477,13 +479,13 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
         if (!isCascadingUse.hasValue())
           isCascadingUse = ACE->isCascadingContextForLookup(false);
       } else if (ExtensionDecl *ED = dyn_cast<ExtensionDecl>(DC)) {
-        if (ED->isProtocolOrProtocolExtensionContext()) {
+        if (ED->getAsProtocolOrProtocolExtensionContext()) {
           ExtendedType = ED->getProtocolSelf()->getArchetype();
         } else {
           ExtendedType = ED->getExtendedType();
         }
 
-        BaseDecl = ED->isNominalTypeOrNominalTypeExtensionContext();
+        BaseDecl = ED->getAsNominalTypeOrNominalTypeExtensionContext();
         MetaBaseDecl = BaseDecl;
         if (!isCascadingUse.hasValue())
           isCascadingUse = ED->isCascadingContextForLookup(false);
@@ -508,8 +510,7 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
       // Check the generic parameters for something with the given name.
       if (GenericParams) {
         namelookup::FindLocalVal localVal(SM, Loc, Consumer);
-        localVal.checkGenericParams(GenericParams,
-                                    DeclVisibilityKind::GenericParameter);
+        localVal.checkGenericParams(GenericParams);
 
         if (!Results.empty())
           return;
@@ -579,8 +580,7 @@ UnqualifiedLookup::UnqualifiedLookup(DeclName Name, DeclContext *DC,
 
         if (dcGenericParams) {
           namelookup::FindLocalVal localVal(SM, Loc, Consumer);
-          localVal.checkGenericParams(dcGenericParams,
-                                      DeclVisibilityKind::GenericParameter);
+          localVal.checkGenericParams(dcGenericParams);
 
           if (!Results.empty())
             return;
@@ -698,7 +698,7 @@ public:
   /// Update a lookup table with members from newly-added extensions.
   void updateLookupTable(NominalTypeDecl *nominal);
 
-  /// \brief Add the given member to the lookup tabke.
+  /// \brief Add the given member to the lookup table.
   void addMember(Decl *members);
 
   /// \brief Add the given members to the lookup table.
@@ -841,33 +841,6 @@ void MemberLookupTable::updateLookupTable(NominalTypeDecl *nominal) {
 
 void MemberLookupTable::destroy() {
   this->~MemberLookupTable();
-}
-
-void NominalTypeDecl::forceDelayedMemberDecls() {
-  if (!hasDelayedMemberDecls())
-    return;
-
-  // Grab the delayed members and then empty the list so we don't recurse.
-  std::unique_ptr<DelayedDecl> DelayedDeclCreator;
-  DelayedMembers.swap(DelayedDeclCreator);
-
-  SmallVector<Decl *, 4> NewDecls;
-  (*DelayedDeclCreator)(NewDecls);
-  for (auto *D : NewDecls) {
-    addMember(D);
-  }
-}
-
-void NominalTypeDecl::setDelayedMemberDecls(const DelayedDecl &delayedMembers) {
-  // FIXME: This method should only be called once so that we only register one
-  // destructor cleanup, but the assert doesn't catch all cases of that.
-  assert(!hasDelayedMemberDecls());
-
-  // Make sure the std::unique_ptr gets destroyed properly so we don't leak.
-  getASTContext().addDestructorCleanup(DelayedMembers);
-
-  DelayedMembers = llvm::make_unique<DelayedDecl>(delayedMembers);
-  setHasDelayedMembers();
 }
 
 void NominalTypeDecl::addedMember(Decl *member) {
@@ -1091,9 +1064,6 @@ bool DeclContext::lookupQualified(Type type,
 
   // Look for module references.
   if (auto moduleTy = type->getAs<ModuleType>()) {
-    assert(!(options & NL_IgnoreAccessibility) &&
-           "accessibility always enforced for module-level lookup");
-
     Module *module = moduleTy->getModule();
     auto topLevelScope = getModuleScopeContext();
     if (module == topLevelScope->getParentModule()) {
@@ -1354,7 +1324,8 @@ bool DeclContext::lookupQualified(Type type,
 
       // If we didn't visit this nominal type above, add this
       // declaration to the list.
-      if (!visited.count(nominal) && knownDecls.insert(decl).second)
+      if (!visited.count(nominal) && knownDecls.insert(decl).second &&
+          isAcceptableDecl(nominal, decl))
         decls.push_back(decl);
     }
   }
@@ -1373,4 +1344,22 @@ bool DeclContext::lookupQualified(Type type,
 
   // We're done. Report success/failure.
   return !decls.empty();
+}
+
+void DeclContext::lookupAllObjCMethods(
+       ObjCSelector selector,
+       SmallVectorImpl<AbstractFunctionDecl *> &results) const {
+  // Collect all of the methods with this selector.
+  forAllVisibleModules(this, [&](Module::ImportedModule import) {
+    import.second->lookupObjCMethods(selector, results);
+  });
+
+  // Filter out duplicates.
+  llvm::SmallPtrSet<AbstractFunctionDecl *, 8> visited;
+  results.erase(
+    std::remove_if(results.begin(), results.end(),
+                   [&](AbstractFunctionDecl *func) -> bool {
+                     return !visited.insert(func).second;
+                   }),
+    results.end());
 }

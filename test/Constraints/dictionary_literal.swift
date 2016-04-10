@@ -12,8 +12,8 @@ final class Dictionary<K, V> : DictionaryLiteralConvertible {
   init(dictionaryLiteral elements: (K, V)...) { }
 }
 
-func useDictStringInt(d: DictStringInt) {}
-func useDict<K, V>(d: Dictionary<K,V>) {}
+func useDictStringInt(_ d: DictStringInt) {}
+func useDict<K, V>(_ d: Dictionary<K,V>) {}
 
 // Concrete dictionary literals.
 useDictStringInt([ "Hello" : 1 ])
@@ -58,4 +58,7 @@ var _: Dictionary<String, Int>? = ["foo", 1.0, 2]  // expected-error {{contextua
 
 var _: Dictionary<String, Int>? = ["foo" : 1.0]  // expected-error {{cannot convert value of type 'Double' to expected dictionary value type 'Int'}}
 
+
+// <rdar://problem/24058895> QoI: Should handle [] in dictionary contexts better
+var _: [Int: Int] = []  // expected-error {{use [:] to get an empty dictionary literal}} {{22-22=:}}
 

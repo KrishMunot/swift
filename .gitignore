@@ -16,7 +16,7 @@
 # Byte compiled python modules.
 *.pyc
 # vim swap files
-.*.swp
+.*.sw[a-z]
 .sw?
 
 #==============================================================================#
@@ -28,9 +28,6 @@ cscope.out
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
 #==============================================================================#
-# Swift performance test suite.
-benchmark/PerfTestSuite
-
 # Generated docs
 docs/_build
 

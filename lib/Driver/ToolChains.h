@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -42,12 +42,41 @@ protected:
                                      const JobContext &context) const override;
   InvocationInfo constructInvocation(const AutolinkExtractJobAction &job,
                                      const JobContext &context) const override;
+
+  virtual std::string getDefaultLinker() const;
+
+  virtual bool shouldProvideRPathToLinker() const;
+
+  virtual bool shouldSpecifyTargetTripleToLinker() const;
+
+  virtual std::string
+  getPreInputObjectPath(StringRef RuntimeLibraryPath) const;
+
+  virtual std::string
+  getPostInputObjectPath(StringRef RuntimeLibraryPath) const;
+
   InvocationInfo constructInvocation(const LinkJobAction &job,
                                      const JobContext &context) const override;
 
 public:
   GenericUnix(const Driver &D, const llvm::Triple &Triple) : ToolChain(D, Triple) {}
   ~GenericUnix() = default;
+};
+
+class LLVM_LIBRARY_VISIBILITY Cygwin : public GenericUnix {
+protected:
+  std::string getDefaultLinker() const override;
+
+  bool shouldSpecifyTargetTripleToLinker() const override;
+
+  std::string getPreInputObjectPath(
+    StringRef RuntimeLibraryPath) const override;
+
+  std::string getPostInputObjectPath(
+    StringRef RuntimeLibraryPath) const override;
+public:
+  Cygwin(const Driver &D, const llvm::Triple &Triple) : GenericUnix(D, Triple) {}
+  ~Cygwin() = default;
 };
 
 } // end namespace toolchains

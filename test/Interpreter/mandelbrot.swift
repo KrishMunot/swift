@@ -7,7 +7,7 @@
 
 import complex
 
-func printDensity(d: Int) {
+func printDensity(_ d: Int) {
   if (d > 40) {
      print(" ", terminator: "")
   } else if d > 6 {
@@ -21,19 +21,19 @@ func printDensity(d: Int) {
   }
 }
 
-func getMandelbrotIterations(c: Complex, _ maxIterations: Int) -> Int {
+func getMandelbrotIterations(_ c: Complex, _ maxIterations: Int) -> Int {
   var n = 0
   var z = Complex() 
   while (n < maxIterations && z.magnitude() < 4.0) {
     z = z*z + c
-    ++n
+    n += 1
   }
   return n
 }
 
-func mandelbrot(xMin: Double, _ xMax: Double,
+func mandelbrot(_ xMin: Double, _ xMax: Double,
                 _ yMin: Double, _ yMax: Double,
-                _ rows: Int, _ cols: Int)  {
+                _ rows: Int, _ cols: Int) {
   // Set the spacing for the points in the Mandelbrot set.
   var dX = (xMax - xMin) / Double(rows)
   var dY = (yMax - yMin) / Double(cols)

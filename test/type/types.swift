@@ -19,7 +19,7 @@ var d4 : () -> Int = { d2 }  // expected-error{{function produces expected type 
 
 var e0 : [Int]
 e0[] // expected-error {{cannot subscript a value of type '[Int]' with an index of type '()'}}
-  // expected-note @-1 {{overloads for 'subscript' exist with these partially matching parameter lists: (Int), (Range<Int>), (Range<Self.Index>), (Self.Index)}}
+  // expected-note @-1 {{overloads for 'subscript' exist with these partially matching parameter lists: (Int), (Range<Int>), (Range<Self.Index>)}}
 
 var f0 : [Float]
 var f1 : [(Int,Int)]
@@ -45,7 +45,7 @@ var i = Int?(42)
 
 var bad_io : (Int) -> (inout Int, Int)  // expected-error {{'inout' is only valid in parameter lists}}
 
-func bad_io2(a: (inout Int, Int)) {}    // expected-error {{'inout' is only valid in parameter lists}}
+func bad_io2(_ a: (inout Int, Int)) {}    // expected-error {{'inout' is only valid in parameter lists}}
 
 // <rdar://problem/15588967> Array type sugar default construction syntax doesn't work
 func test_array_construct<T>(_: T) {
@@ -55,6 +55,12 @@ func test_array_construct<T>(_: T) {
   _ = [UnsafeMutablePointer<Int?>]()  // Nesting.
   _ = [([UnsafeMutablePointer<Int>])]()
   _ = [(String, Float)]()
+}
+
+extension Optional {
+  init() {
+    self = .none
+  }
 }
 
 // <rdar://problem/15295763> default constructing an optional fails to typecheck
@@ -138,10 +144,10 @@ let tupleTypeWithNames = (age:Int, count:Int)(4, 5)
 let dictWithTuple = [String: (age:Int, count:Int)]()
 
 // <rdar://problem/21684837> typeexpr not being formed for postfix !
-let bb2 = [Int!](count: 2, repeatedValue: nil)
+let bb2 = [Int!](repeating: nil, count: 2)
 
 // <rdar://problem/21560309> inout allowed on function return type
-func r21560309<U>(body: (inout _: Int) -> inout U) {}  // expected-error {{'inout' is only valid in parameter lists}}
+func r21560309<U>(_ body: (_: inout Int) -> inout U) {}  // expected-error {{'inout' is only valid in parameter lists}}
 r21560309 { x in x }
 
 // <rdar://problem/21949448> Accepts-invalid: 'inout' shouldn't be allowed on stored properties

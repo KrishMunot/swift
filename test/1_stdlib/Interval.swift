@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -12,9 +12,9 @@
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
 //
-// XFAIL: interpret
 
 import StdlibUnittest
+
 
 // Check that the generic parameter is called 'Bound'.
 protocol TestProtocol1 {}
@@ -88,8 +88,8 @@ IntervalTestSuite.test("PatternMatching") {
 IntervalTestSuite.test("Overlaps") {
   
   func expectOverlaps<
-    I0: IntervalType, I1: IntervalType where I0.Bound == I1.Bound
-  >(expectation: Bool, _ lhs: I0, _ rhs: I1) {
+    I0: Interval, I1: Interval where I0.Bound == I1.Bound
+  >(_ expectation: Bool, _ lhs: I0, _ rhs: I1) {
     if expectation {
       expectTrue(lhs.overlaps(rhs))
       expectTrue(rhs.overlaps(lhs))
@@ -123,6 +123,11 @@ IntervalTestSuite.test("Overlaps") {
   expectOverlaps(true, 0..<20, 5...10)
   expectOverlaps(true, 0...20, 5..<10)
   expectOverlaps(true, 0...20, 5...10)
+
+  // 0-0, 0-5
+  expectOverlaps(false, 0..<0, 0..<5)
+  expectOverlaps(false, 0..<0, 0...5)
+  
 }
 
 IntervalTestSuite.test("Emptiness") {
@@ -169,19 +174,19 @@ IntervalTestSuite.test("CustomStringConvertible/CustomDebugStringConvertible") {
   expectEqual("0.0...0.1", String(X(0.0)...X(0.1)))
   
   expectEqual(
-    "HalfOpenInterval(X(0.0)..<X(0.1))",
-    String(reflecting: HalfOpenInterval(X(0.0)..<X(0.1))))
+    "HalfOpenInterval(X(0.0)..<X(0.5))",
+    String(reflecting: HalfOpenInterval(X(0.0)..<X(0.5))))
   expectEqual(
-    "ClosedInterval(X(0.0)...X(0.1))",
-    String(reflecting: ClosedInterval(X(0.0)...X(0.1))))
+    "ClosedInterval(X(0.0)...X(0.5))",
+    String(reflecting: ClosedInterval(X(0.0)...X(0.5))))
 }
 
 IntervalTestSuite.test("rdar12016900") {
-  if true {
+  do {
     let wc = 0
     expectFalse((0x00D800 ..< 0x00E000).contains(wc))
   }
-  if true {
+  do {
     let wc = 0x00D800
     expectTrue((0x00D800 ..< 0x00E000).contains(wc))
   }

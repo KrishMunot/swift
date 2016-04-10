@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -48,8 +48,9 @@ UnicodeTrie.test("_UnicodeGraphemeClusterBreakPropertyTrie") {
 
   var trie = _UnicodeGraphemeClusterBreakPropertyTrie()
 
-  var expected = [_GraphemeClusterBreakPropertyValue](count: 0x110000,
-      repeatedValue: _GraphemeClusterBreakPropertyValue.Other)
+  var expected = [_GraphemeClusterBreakPropertyValue](
+    repeating: _GraphemeClusterBreakPropertyValue.Other,
+    count: 0x110000)
   for (startCodePoint, endCodePoint, value) in graphemeBreakPropertyTable {
     for cp in startCodePoint...endCodePoint {
       expected[cp] = value
@@ -92,15 +93,21 @@ class NonContiguousNSString : NSString {
 
   convenience init(_ scalars: [UInt32]) {
     var encoded: [UInt16] = []
-    var g = scalars.generate()
+    var iter = scalars.makeIterator()
     let output: (UInt16) -> Void = { encoded.append($0) }
-    let hadError =
-      transcode(UTF32.self, UTF16.self, g, output, stopOnError: true)
+    let hadError = transcode(
+      iter,
+      from: UTF32.self,
+      to: UTF16.self,
+      stoppingOnError: true,
+      sendingOutputTo: output)
     expectFalse(hadError)
     self.init(encoded)
   }
 
-  @objc override func copyWithZone(zone: NSZone) -> AnyObject {
+  @objc(copyWithZone:)
+  override func copy(with zone: NSZone) -> AnyObject {
+
     // Ensure that copying this string produces a class that CoreFoundation
     // does not know about.
     return self
@@ -110,7 +117,7 @@ class NonContiguousNSString : NSString {
     return _value.count
   }
 
-  @objc override func characterAtIndex(index: Int) -> unichar {
+  @objc override func character(at index: Int) -> unichar {
     return _value[index]
   }
 
@@ -120,7 +127,7 @@ class NonContiguousNSString : NSString {
 /// Verify that extended grapheme cluster boundaries in `subject` occur at
 /// positions specified in `expectedBoundaries`.
 func checkGraphemeClusterSegmentation(
-    expectedBoundaries: [Int], _ subject: String, _ stackTrace: SourceLocStack
+    _ expectedBoundaries: [Int], _ subject: String, _ stackTrace: SourceLocStack
 ) {
   var actualBoundaries: [Int] = [ 0 ]
   var unicodeScalarCount = 0
@@ -139,7 +146,7 @@ func checkGraphemeClusterSegmentation(
 }
 
 func checkGraphemeClusterSegmentation(
-    expectedBoundaries: [Int], scalars: [UInt32], _ stackTrace: SourceLocStack
+    _ expectedBoundaries: [Int], scalars: [UInt32], _ stackTrace: SourceLocStack
 ) {
   let subject = NonContiguousNSString(scalars) as String
   checkGraphemeClusterSegmentation(expectedBoundaries, subject,
@@ -147,7 +154,7 @@ func checkGraphemeClusterSegmentation(
 }
 
 func checkGraphemeClusterSegmentation(
-    expectedBoundaries: [Int], codeUnits: [UInt16], _ stackTrace: SourceLocStack
+    _ expectedBoundaries: [Int], codeUnits: [UInt16], _ stackTrace: SourceLocStack
 ) {
   let subject = NonContiguousNSString(codeUnits) as String
   checkGraphemeClusterSegmentation(expectedBoundaries, subject,
@@ -159,7 +166,7 @@ UnicodeTrie.test("GraphemeClusterSegmentation/UnicodeSpec") {
   // specification.
 
 % for code_points,expected_boundaries in grapheme_cluster_break_tests:
-  if true {
+  do {
     let scalars: [UInt32] =
         [ ${", ".join([ str(cp) for cp in code_points ])} ]
     let expectedBoundaries: [Int] =

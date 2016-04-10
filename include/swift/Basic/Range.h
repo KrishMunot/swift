@@ -1,8 +1,8 @@
-//===- Range.h - Classes for conveniently working with ranges ---*- C++ -*-===//
+//===--- Range.h - Classes for conveniently working with ranges -*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -268,30 +268,33 @@ template <class T> EnumeratorRange<T> enumerate(T Begin, T End) {
   return EnumeratorRange<T>(Begin, End);
 }
 
-/// An adaptor of std::any_of for ranges.
-template <class Range, class Predicate>
-inline
-bool
-any_of(Range R, Predicate P) {
-  return std::any_of(R.begin(), R.end(), P);
-}
-
-/// An adaptor of std::all_of for ranges.
-template <class Range, class Predicate>
-inline
-bool
-all_of(Range R, Predicate P) {
-  return std::all_of(R.begin(), R.end(), P);
-}
-
 /// An adaptor of std::none_of for ranges.
 template <class Range, class Predicate>
-inline
-bool
-none_of(Range R, Predicate P) {
-  return std::none_of(R.begin(), R.end(), P);
+inline bool none_of(const Range &R, Predicate &&P) {
+  return std::none_of(R.begin(), R.end(), std::forward<Predicate>(P));
 }
 
-} // namespace swift
+/// An adaptor of std::count for ranges.
+///
+/// We use std::result_of on Range::begin since llvm::iterator_range does not
+/// have a public typedef set to what is the underlying iterator.
+//typename std::iterator_traits<decltype(&Range::begin())>::difference_type
+template <class Range, class Value>
+inline auto count(const Range &R, Value V)
+  -> typename std::iterator_traits<decltype(R.begin())>::difference_type {
+  return std::count(R.begin(), R.end(), V);
+}
 
-#endif
+/// An adaptor of std::count_if for ranges.
+///
+/// We use std::result_of on Range::begin since llvm::iterator_range does not
+/// have a public typedef set to what is the underlying iterator.
+template <class Range, class Predicate>
+inline auto count_if(const Range &R, Predicate &&P)
+  -> typename std::iterator_traits<decltype(R.begin())>::difference_type {
+  return std::count_if(R.begin(), R.end(), std::forward<Predicate>(P));
+}
+
+} // end namespace swift
+
+#endif // SWIFT_BASIC_RANGE_H

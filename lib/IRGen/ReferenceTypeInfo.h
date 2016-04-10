@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -40,10 +40,12 @@ protected:
 
 public:
   /// Strongly retains a value.
-  virtual void strongRetain(IRGenFunction &IGF, Explosion &in) const = 0;
-  
+  virtual void strongRetain(IRGenFunction &IGF, Explosion &in,
+                            Atomicity atomicity) const = 0;
+
   /// Strongly releases a value.
-  virtual void strongRelease(IRGenFunction &IGF, Explosion &in) const = 0;
+  virtual void strongRelease(IRGenFunction &IGF, Explosion &in,
+                             Atomicity atomicity) const = 0;
 
   /// Strongly retains a value that has come from a safe [unowned] reference.
   /// This operation is not supported for all reference types.

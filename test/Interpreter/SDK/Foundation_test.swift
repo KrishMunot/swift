@@ -1,11 +1,11 @@
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
 
-// XFAIL: interpret
 // REQUIRES: objc_interop
 
 import Foundation
 import StdlibUnittest
+
 
 // rdar://problem/18884272
 // Make sure that NSObject conforms to NSObjectProtocol. This
@@ -15,8 +15,8 @@ let objcProtocol: NSObjectProtocol = NSObject()
 
 var FoundationTestSuite = TestSuite("Foundation")
 
-func asNSString(s: String) -> NSString { return s as NSString }
-func asString(ns: NSString) -> String { return ns as String }
+func asNSString(_ s: String) -> NSString { return s as NSString }
+func asString(_ ns: NSString) -> String { return ns as String }
 
 //===----------------------------------------------------------------------===//
 // Strings
@@ -25,8 +25,8 @@ func asString(ns: NSString) -> String { return ns as String }
 FoundationTestSuite.test("NSString") {
   var str = "Hello"
   var nsStr = str as NSString
-  assert(nsStr.compare(str).rawValue == NSComparisonResult.OrderedSame.rawValue)
-  assert(nsStr.compare(str) == NSComparisonResult.OrderedSame)
+  assert(nsStr.compare(str).rawValue == NSComparisonResult.orderedSame.rawValue)
+  assert(nsStr.compare(str) == NSComparisonResult.orderedSame)
   nsStr = "World"
   str = nsStr as String
   // FIXME: Shouldn't need coercion here to resolve ambiguity. <rdar://problem/14637688>
@@ -109,7 +109,7 @@ FoundationTestSuite.test("arrayConversions") {
 
   var nsaoa = aoa as NSArray
 
-  func nsArrayToAnyObjectArray(nsa: NSArray) -> [AnyObject] {
+  func nsArrayToAnyObjectArray(_ nsa: NSArray) -> [AnyObject] {
     return nsa as [AnyObject]
   }
 
@@ -153,7 +153,7 @@ FoundationTestSuite.test("NSURL") {
 // Pattern-matching
 //===----------------------------------------------------------------------===//
 
-func matchesEither(input: NSNumber, _ a: NSNumber, _ b: NSNumber) -> Bool {
+func matchesEither(_ input: NSNumber, _ a: NSNumber, _ b: NSNumber) -> Bool {
   switch input {
   case a, b:
     return true
@@ -164,10 +164,10 @@ func matchesEither(input: NSNumber, _ a: NSNumber, _ b: NSNumber) -> Bool {
 
 FoundationTestSuite.test("patternMatching") {
   var one, two, three, oneAgain : NSNumber
-  one = NSNumber(int: 1)
-  two = NSNumber(int: 2)
-  three = NSNumber(int: 3)
-  oneAgain = NSNumber(int: 1)
+  one = NSNumber(value: 1)
+  two = NSNumber(value: 2)
+  three = NSNumber(value: 3)
+  oneAgain = NSNumber(value: 1)
   expectFalse(matchesEither(one, two, three))
   expectTrue(matchesEither(one, oneAgain, three))
   expectTrue(matchesEither(one, two, oneAgain))
@@ -206,17 +206,17 @@ FoundationTestSuite.test("NSRectEdge/constants") {
   //
   // It is valid to hardcode the value in the test.  The way they are currently
   // defined in the SDK makes them ABI for Objective-C code.
-  expectEqual(0, CGRectEdge(rectEdge: NSRectEdge.MinX).rawValue)
-  expectEqual(0, NSRectEdge(rectEdge: CGRectEdge.MinXEdge).rawValue)
+  expectEqual(0, CGRectEdge(rectEdge: NSRectEdge.minX).rawValue)
+  expectEqual(0, NSRectEdge(rectEdge: CGRectEdge.minXEdge).rawValue)
 
-  expectEqual(1, CGRectEdge(rectEdge: NSRectEdge.MinY).rawValue)
-  expectEqual(1, NSRectEdge(rectEdge: CGRectEdge.MinYEdge).rawValue)
+  expectEqual(1, CGRectEdge(rectEdge: NSRectEdge.minY).rawValue)
+  expectEqual(1, NSRectEdge(rectEdge: CGRectEdge.minYEdge).rawValue)
 
-  expectEqual(2, CGRectEdge(rectEdge: NSRectEdge.MaxX).rawValue)
-  expectEqual(2, NSRectEdge(rectEdge: CGRectEdge.MaxXEdge).rawValue)
+  expectEqual(2, CGRectEdge(rectEdge: NSRectEdge.maxX).rawValue)
+  expectEqual(2, NSRectEdge(rectEdge: CGRectEdge.maxXEdge).rawValue)
 
-  expectEqual(3, CGRectEdge(rectEdge: NSRectEdge.MaxY).rawValue)
-  expectEqual(3, NSRectEdge(rectEdge: CGRectEdge.MaxYEdge).rawValue)
+  expectEqual(3, CGRectEdge(rectEdge: NSRectEdge.maxY).rawValue)
+  expectEqual(3, NSRectEdge(rectEdge: CGRectEdge.maxYEdge).rawValue)
 }
 #endif
 
@@ -256,12 +256,12 @@ if #available(OSX 10.11, iOS 9.0, *) {
 private let KEY = "some-key"
 private func createTestArchive() -> NSData {
   let mutableData = NSMutableData()
-  let KA = NSKeyedArchiver(forWritingWithMutableData: mutableData)
+  let KA = NSKeyedArchiver(forWritingWith: mutableData)
 
   // Set up some fake data.
   let obj =  NSPredicate(value: true)
-  KA.encodeObject(obj, forKey: KEY)
-  KA.encodeObject(obj, forKey: NSKeyedArchiveRootObjectKey)
+  KA.encode(obj, forKey: KEY)
+  KA.encode(obj, forKey: NSKeyedArchiveRootObjectKey)
   KA.finishEncoding()
 
   return mutableData
@@ -271,7 +271,7 @@ FoundationTestSuite.test("NSKeyedUnarchiver/decodeObjectOfClass(_:forKey:)") {
   let obj = NSPredicate(value: true)
   let data = createTestArchive()
 
-  var KU = NSKeyedUnarchiver(forReadingWithData: data)
+  var KU = NSKeyedUnarchiver(forReadingWith: data)
 
   var missing = KU.decodeObjectOfClass(NSPredicate.self, forKey: "Not there")
   expectEmpty(missing)
@@ -296,12 +296,12 @@ if #available(OSX 10.11, iOS 9.0, *) {
     let data = createTestArchive()
 
     // first confirm .decodeObjectWithClasses overlay requires NSSet
-    var KU = NSKeyedUnarchiver(forReadingWithData: data)
+    var KU = NSKeyedUnarchiver(forReadingWith: data)
     var nonTopLevelResult = KU.decodeObjectOfClasses(NSSet(array: [NSPredicate.self]), forKey: KEY)
     expectTrue(nonTopLevelResult != nil)
     KU.finishDecoding()
 
-    KU = NSKeyedUnarchiver(forReadingWithData: data)
+    KU = NSKeyedUnarchiver(forReadingWith: data)
     do {
       // decodeObjectForKey(_:) throws
       let decoded1 = try KU.decodeTopLevelObjectForKey(KEY) as? NSPredicate
@@ -312,7 +312,7 @@ if #available(OSX 10.11, iOS 9.0, *) {
       KU.finishDecoding()
 
       // recreate so we can do the rest securely
-      KU = NSKeyedUnarchiver(forReadingWithData: data)
+      KU = NSKeyedUnarchiver(forReadingWith: data)
       KU.requiresSecureCoding = true
 
       // decodeObjectOfClass(_:,forKey:) throws
@@ -335,7 +335,7 @@ if #available(OSX 10.11, iOS 9.0, *) {
     }
     KU.finishDecoding()
 
-    KU = NSKeyedUnarchiver(forReadingWithData: data)
+    KU = NSKeyedUnarchiver(forReadingWith: data)
     KU.requiresSecureCoding = true
     do {
       // recreate so we avoid caches from above
@@ -347,7 +347,7 @@ if #available(OSX 10.11, iOS 9.0, *) {
     }
     KU.finishDecoding()
 
-    KU = NSKeyedUnarchiver(forReadingWithData: data)
+    KU = NSKeyedUnarchiver(forReadingWith: data)
     KU.requiresSecureCoding = true
     do {
       let wrongClasses = NSSet(array: [NSDateFormatter.self])
@@ -373,7 +373,7 @@ if #available(OSX 10.11, iOS 9.0, *) {
     let obj = NSPredicate(value: true)
     let data = createTestArchive()
 
-    var KU = NSKeyedUnarchiver(forReadingWithData: data)
+    var KU = NSKeyedUnarchiver(forReadingWith: data)
 
     expectCrashLater()
     // Even though we're doing non-secure coding, this should still be checked

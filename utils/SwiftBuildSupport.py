@@ -1,18 +1,22 @@
-#===--- SwiftBuildSupport.py - Utilities for Swift build scripts -----------===#
+# utils/SwiftBuildSupport.py - Utilities for Swift build scripts -*- python -*-
 #
 # This source file is part of the Swift.org open source project
 #
-# Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+# Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 # Licensed under Apache License v2.0 with Runtime Library Exception
 #
 # See http://swift.org/LICENSE.txt for license information
 # See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
-#
-#===------------------------------------------------------------------------===#
 
 from __future__ import print_function
 
-import ConfigParser
+try:
+    # Python 2
+    import ConfigParser
+except ImportError:
+    # Python 3
+    import configparser as ConfigParser
+
 import os
 import pipes
 import subprocess
@@ -64,13 +68,8 @@ def print_with_argv0(message):
     print(sys.argv[0] + ": " + message)
 
 
-def bad_usage(message):
-    print_with_argv0(message)
-    print("Run '" + pipes.quote(sys.argv[0]) + " --help' for more information.")
-    sys.exit(1)
-
 def quote_shell_command(args):
-    return " ".join([ pipes.quote(a) for a in args ])
+    return " ".join([pipes.quote(a) for a in args])
 
 
 def check_call(args, print_command=False, verbose=False):
@@ -79,16 +78,14 @@ def check_call(args, print_command=False, verbose=False):
     try:
         return subprocess.check_call(args)
     except subprocess.CalledProcessError as e:
-        if verbose:
-            print_with_argv0(e.strerror)
-        else:
-            print_with_argv0(
-                "command terminated with a non-zero exit status " +
-                str(e.returncode) + ", aborting")
+        print_with_argv0(
+            "command terminated with a non-zero exit status " +
+            str(e.returncode) + ", aborting")
         sys.stdout.flush()
         sys.exit(1)
     except OSError as e:
-        print_with_argv0("could not execute '" + quote_shell_command(args) +
+        print_with_argv0(
+            "could not execute '" + quote_shell_command(args) +
             "': " + e.strerror)
         sys.stdout.flush()
         sys.exit(1)
@@ -100,16 +97,14 @@ def check_output(args, print_command=False, verbose=False):
     try:
         return subprocess.check_output(args)
     except subprocess.CalledProcessError as e:
-        if verbose:
-            print_with_argv0(e.strerror)
-        else:
-            print_with_argv0(
-                "command terminated with a non-zero exit status " +
-                str(e.returncode) + ", aborting")
+        print_with_argv0(
+            "command terminated with a non-zero exit status " +
+            str(e.returncode) + ", aborting")
         sys.stdout.flush()
         sys.exit(1)
     except OSError as e:
-        print_with_argv0("could not execute '" + quote_shell_command(args) +
+        print_with_argv0(
+            "could not execute '" + quote_shell_command(args) +
             "': " + e.strerror)
         sys.stdout.flush()
         sys.exit(1)
@@ -126,6 +121,7 @@ def _load_preset_files_impl(preset_file_names, substitutions={}):
 
 _PRESET_PREFIX = "preset: "
 
+
 def _get_preset_options_impl(config, substitutions, preset_name):
     section_name = _PRESET_PREFIX + preset_name
     if section_name not in config.sections():
@@ -139,7 +135,7 @@ def _get_preset_options_impl(config, substitutions, preset_name):
     for o in config.options(section_name):
         try:
             a = config.get(section_name, o)
-        except ConfigParser.InterpolationMissingOptionError, e:
+        except ConfigParser.InterpolationMissingOptionError as e:
             # e.reference contains the correctly formatted option
             missing_opts.append(e.reference)
             continue
@@ -155,8 +151,8 @@ def _get_preset_options_impl(config, substitutions, preset_name):
             # Split on newlines and filter out empty lines.
             mixins = filter(None, [m.strip() for m in a.splitlines()])
             for mixin in mixins:
-                (base_build_script_opts, \
-                    base_build_script_impl_opts, \
+                (base_build_script_opts,
+                    base_build_script_impl_opts,
                     base_missing_opts) = \
                     _get_preset_options_impl(config, substitutions, mixin)
                 build_script_opts += base_build_script_opts
@@ -187,17 +183,17 @@ def get_preset_options(substitutions, preset_file_names, preset_name):
         print_with_argv0("preset '" + preset_name + "' not found")
         sys.exit(1)
     if missing_opts:
-        print_with_argv0("missing option(s) for preset '" + preset_name + \
-        "': " + ", ".join(missing_opts))
+        print_with_argv0("missing option(s) for preset '" + preset_name +
+                         "': " + ", ".join(missing_opts))
         sys.exit(1)
 
-    return build_script_opts + [ "--" ] + build_script_impl_opts
+    return build_script_opts + ["--"] + build_script_impl_opts
 
 
 def get_all_preset_names(preset_file_names):
     config = _load_preset_files_impl(preset_file_names)
-    return [ name[len(_PRESET_PREFIX):] for name in config.sections()
-             if name.startswith(_PRESET_PREFIX) ]
+    return [name[len(_PRESET_PREFIX):] for name in config.sections()
+            if name.startswith(_PRESET_PREFIX)]
 
 
 # A context manager for changing the current working directory.
@@ -205,6 +201,7 @@ def get_all_preset_names(preset_file_names):
 #     with WorkingDirectory('/tmp'):
 #         ... do work in /tmp...
 class WorkingDirectory(object):
+
     def __init__(self, new_cwd):
         self.new_cwd = new_cwd
 

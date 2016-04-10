@@ -1,8 +1,8 @@
-//===- Range.swift.gyb ----------------------------------------*- swift -*-===//
+//===--- Range.swift ------------------------------------------------------===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -10,36 +10,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// A generator over the elements of `Range<Element>`.
-public struct RangeGenerator<
-  Element : ForwardIndexType
-> : GeneratorType, SequenceType {
-
-  @available(*, unavailable, renamed="Element")
-  public typealias T = Element
+/// An iterator over the elements of `Range<Element>`.
+@_fixed_layout
+public struct RangeIterator<
+  Element : ForwardIndex
+> : IteratorProtocol, Sequence {
 
   /// Construct an instance that traverses the elements of `bounds`.
+  @_versioned
   @_transparent
-  public init(_ bounds: Range<Element>) {
-    self.startIndex = bounds.startIndex
-    self.endIndex = bounds.endIndex
+  internal init(_bounds: Range<Element>) {
+    self.startIndex = _bounds.startIndex
+    self.endIndex = _bounds.endIndex
   }
 
   /// Advance to the next element and return it, or `nil` if no next
   /// element exists.
+  @inline(__always)
   public mutating func next() -> Element? {
-    if startIndex == endIndex {
-      return .None
-    }
-    return startIndex++
+    if startIndex == endIndex { return nil }
+    let element = startIndex
+    startIndex._successorInPlace()
+    return element
   }
 
   /// The lower bound of the remaining range.
-  public var startIndex: Element
+  @_versioned
+  internal var startIndex: Element
 
   /// The upper bound of the remaining range; not included in the
   /// generated sequence.
-  public var endIndex: Element
+  @_versioned
+  internal let endIndex: Element
 }
 
 /// A collection of consecutive discrete index values.
@@ -66,17 +68,16 @@ public struct RangeGenerator<
 ///
 /// However, subscripting that range still works in a generic context:
 ///
-///     func brackets<Element : ForwardIndexType>(x: Range<Element>, i: Element) -> Element {
+///     func brackets<Element : ForwardIndex>(_ x: Range<Element>, i: Element) -> Element {
 ///       return x[i] // Just forward to subscript
 ///     }
-///     print(brackets(Range<Int>(start:-99, end:100), 0)) // prints 0
+///     print(brackets(Range<Int>(start: -99, end: 100), 0))
+///     // Prints "0"
+@_fixed_layout
 public struct Range<
-  Element : ForwardIndexType
-> : Equatable, CollectionType,
+  Element : ForwardIndex
+> : Equatable, Collection,
     CustomStringConvertible, CustomDebugStringConvertible {
-
-  @available(*, unavailable, renamed="Element")
-  public typealias T = Element
 
   /// Construct a copy of `x`.
   public init(_ x: Range) {
@@ -88,15 +89,16 @@ public struct Range<
 
   /// Construct a range with `startIndex == start` and `endIndex ==
   /// end`.
+  @_versioned
   @_transparent
-  public init(start: Element, end: Element) {
-    self.startIndex = start
+  internal init(_start: Element, end: Element) {
+    self.startIndex = _start
     self.endIndex = end
   }
 
   /// Access the element at `position`.
   ///
-  /// - Requires: `position` is a valid position in `self` and
+  /// - Precondition: `position` is a valid position in `self` and
   ///   `position != endIndex`.
   public subscript(position: Element) -> Element {
     _debugPrecondition(position != endIndex, "Index out of range")
@@ -105,7 +107,7 @@ public struct Range<
 
   //===--------------------------------------------------------------------===//
   // Overloads for subscript that allow us to make subscripting fail
-  // at compile time, outside a generic context, when Element is an IntegerType
+  // at compile time, outside a generic context, when Element is an Integer
   // type. The current language design gives us no way to force r[0]
   // to work "as expected" (return the first element of the range) for
   // an arbitrary Range<Int>, so instead we make it ambiguous.  Same
@@ -117,11 +119,12 @@ public struct Range<
 
   //===--------------------------------------------------------------------===//
 
-  /// Return a *generator* over the elements of this *sequence*.
+  /// Returns an iterator over the elements of this sequence.
   ///
   /// - Complexity: O(1).
-  public func generate() -> RangeGenerator<Element> {
-    return Generator(self)
+  @inline(__always)
+  public func makeIterator() -> RangeIterator<Element> {
+    return RangeIterator(_bounds: self)
   }
 
   /// The range's lower bound.
@@ -147,6 +150,36 @@ public struct Range<
   }
 }
 
+extension Range : CustomReflectable {
+  public var customMirror: Mirror {
+    return Mirror(self, children: ["startIndex": startIndex, "endIndex": endIndex])
+  }
+}
+
+/// O(1) implementation of `contains()` for ranges of comparable elements.
+extension Range where Element : Comparable {
+  @warn_unused_result
+  public func _customContainsEquatableElement(_ element: Element) -> Bool? {
+    return element >= self.startIndex && element < self.endIndex
+  }
+
+  // FIXME: copied from SequenceAlgorithms as a workaround for
+  // https://bugs.swift.org/browse/SR-435
+  @warn_unused_result
+  public func contains(_ element: Element) -> Bool {
+    if let result = _customContainsEquatableElement(element) {
+      return result
+    }
+
+    for e in self {
+      if e == element {
+        return true
+      }
+    }
+    return false
+  }
+}
+
 @warn_unused_result
 public func == <Element>(lhs: Range<Element>, rhs: Range<Element>) -> Bool {
   return lhs.startIndex == rhs.startIndex &&
@@ -157,52 +190,66 @@ public func == <Element>(lhs: Range<Element>, rhs: Range<Element>) -> Bool {
 /// `maximum`.
 @_transparent
 @warn_unused_result
-public func ..< <Pos : ForwardIndexType> (minimum: Pos, maximum: Pos)
+public func ..< <Pos : ForwardIndex> (minimum: Pos, maximum: Pos)
   -> Range<Pos> {
-  return Range(start: minimum, end: maximum)
+  return Range(_start: minimum, end: maximum)
 }
 
 /// Forms a closed range that contains both `minimum` and `maximum`.
 @_transparent
 @warn_unused_result
-public func ... <Pos : ForwardIndexType> (
+public func ... <Pos : ForwardIndex> (
   minimum: Pos, maximum: Pos
 ) -> Range<Pos> {
-  return Range(start: minimum, end: maximum.successor())
+  return Range(_start: minimum, end: maximum.successor())
 }
 
 //===--- Prefer Ranges to Intervals, and add checking ---------------------===//
 
 /// Forms a half-open range that contains `start`, but not `end`.
 ///
-/// - Requires: `start <= end`.
+/// - Precondition: `start <= end`.
 @_transparent
 @warn_unused_result
-public func ..< <Pos : ForwardIndexType where Pos : Comparable> (
+public func ..< <Pos : ForwardIndex where Pos : Comparable> (
   start: Pos, end: Pos
 ) -> Range<Pos> {
   _precondition(start <= end, "Can't form Range with end < start")
-  return Range(start: start, end: end)
+  return Range(_start: start, end: end)
 }
 
 /// Forms a closed range that contains both `start` and `end`.
-/// - Requires: `start <= end`.
+/// - Precondition: `start <= end`.
 @_transparent
 @warn_unused_result
-public func ... <Pos : ForwardIndexType where Pos : Comparable> (
+public func ... <Pos : ForwardIndex where Pos : Comparable> (
   start: Pos, end: Pos
 ) -> Range<Pos> {
   _precondition(start <= end, "Can't form Range with end < start")
   _precondition(end.successor() > end, "Range end index has no valid successor")
-  return Range(start: start, end: end.successor())
+  return Range(_start: start, end: end.successor())
 }
 
 @warn_unused_result
-public func ~= <I : ForwardIndexType where I : Comparable> (
+public func ~= <I : ForwardIndex where I : Comparable> (
   pattern: Range<I>, value: I
 ) -> Bool {
-  // Intervals can check for containment in O(1).
-  return 
-    HalfOpenInterval(pattern.startIndex, pattern.endIndex).contains(value)
+  return pattern.contains(value)
 }
 
+@available(*, unavailable, renamed: "RangeIterator")
+public struct RangeGenerator<Element : ForwardIndex> {}
+
+extension RangeIterator {
+  @available(*, unavailable, message: "use the 'makeIterator()' method on the collection")
+  public init(_ bounds: Range<Element>) {
+    fatalError("unavailable function can't be called")
+  }
+}
+
+extension Range {
+  @available(*, unavailable, message: "use the '..<' operator")
+  public init(start: Element, end: Element) {
+    fatalError("unavailable function can't be called")
+  }
+}

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -19,26 +19,27 @@
 import SwiftShims
 
 internal typealias _ArrayBridgeStorage
-  = _BridgeStorage<_ContiguousArrayStorageBase, _NSArrayCoreType>
+  = _BridgeStorage<_ContiguousArrayStorageBase, _NSArrayCore>
 
-public struct _ArrayBuffer<Element> : _ArrayBufferType {
+@_fixed_layout
+public struct _ArrayBuffer<Element> : _ArrayBufferProtocol {
 
   /// Create an empty buffer.
   public init() {
     _storage = _ArrayBridgeStorage(native: _emptyArrayStorage)
   }
 
-  public init(nsArray: _NSArrayCoreType) {
+  public init(nsArray: _NSArrayCore) {
     _sanityCheck(_isClassOrObjCExistential(Element.self))
     _storage = _ArrayBridgeStorage(objC: nsArray)
   }
 
   /// Returns an `_ArrayBuffer<U>` containing the same elements.
   ///
-  /// - Requires: The elements actually have dynamic type `U`, and `U`
+  /// - Precondition: The elements actually have dynamic type `U`, and `U`
   ///   is a class or `@objc` existential.
   @warn_unused_result
-  func castToBufferOf<U>(_: U.Type) -> _ArrayBuffer<U> {
+  internal func cast<U>(toBufferOf _: U.Type) -> _ArrayBuffer<U> {
     _sanityCheck(_isClassOrObjCExistential(Element.self))
     _sanityCheck(_isClassOrObjCExistential(U.self))
     return _ArrayBuffer<U>(storage: _storage)
@@ -49,12 +50,13 @@ public struct _ArrayBuffer<Element> : _ArrayBufferType {
   var deferredTypeCheckMask : Int { return 1 }
   
   /// Returns an `_ArrayBuffer<U>` containing the same elements,
-  /// deffering checking each element's `U`-ness until it is accessed.
+  /// deferring checking each element's `U`-ness until it is accessed.
   ///
-  /// - Requires: `U` is a class or `@objc` existential derived from `Element`.
+  /// - Precondition: `U` is a class or `@objc` existential derived from
+  /// `Element`.
   @warn_unused_result
-  func downcastToBufferWithDeferredTypeCheckOf<U>(
-    _: U.Type
+  internal func downcast<U>(
+    toBufferWithDeferredTypeCheckOf _: U.Type
   ) -> _ArrayBuffer<U> {
     _sanityCheck(_isClassOrObjCExistential(Element.self))
     _sanityCheck(_isClassOrObjCExistential(U.self))
@@ -117,7 +119,7 @@ extension _ArrayBuffer {
   /// - Precondition: `_isBridgedToObjectiveC(Element.self)`.
   ///   O(1) if the element type is bridged verbatim, O(N) otherwise.
   @warn_unused_result
-  public func _asCocoaArray() -> _NSArrayCoreType {
+  public func _asCocoaArray() -> _NSArrayCore {
     _sanityCheck(
       _isBridgedToObjectiveC(Element.self),
       "Array element type is not bridged to Objective-C")
@@ -131,8 +133,7 @@ extension _ArrayBuffer {
   /// Otherwise, returns `nil`.
   @warn_unused_result
   public mutating func requestUniqueMutableBackingBuffer(minimumCapacity: Int)
-    -> NativeBuffer?
-  {
+	-> NativeBuffer? {
     if _fastPath(isUniquelyReferenced()) {
       let b = _native
       if _fastPath(b.capacity >= minimumCapacity) {
@@ -168,9 +169,9 @@ extension _ArrayBuffer {
   // handle loops atm. and so can get blocked by the presence of a loop (over
   // the range). This loop is not necessary for a single element access.
   @inline(never)
-  internal func _typeCheckSlowPath(index: Int) {
+  internal func _typeCheckSlowPath(_ index: Int) {
     if _fastPath(_isNative) {
-      let element: AnyObject = castToBufferOf(AnyObject.self)._native[index]
+      let element: AnyObject = cast(toBufferOf: AnyObject.self)._native[index]
       _precondition(
         element is Element,
         "Down-casted Array element failed to match the target type")
@@ -178,12 +179,12 @@ extension _ArrayBuffer {
     else {
       let ns = _nonNative
       _precondition(
-        ns.objectAtIndex(index) is Element,
+        ns.objectAt(index) is Element,
         "NSArray element failed to match the Swift Array Element type")
     }
   }
 
-  func _typeCheck(subRange: Range<Int>) {
+  func _typeCheck(_ subRange: Range<Int>) {
     if !_isClassOrObjCExistential(Element.self) {
       return
     }
@@ -197,24 +198,24 @@ extension _ArrayBuffer {
       }
     }
   }
-  
-  /// Copy the given subRange of this buffer into uninitialized memory
-  /// starting at target.  Return a pointer past-the-end of the
+
+  /// Copy the elements in `bounds` from this buffer into uninitialized
+  /// memory starting at `target`.  Return a pointer past-the-end of the
   /// just-initialized memory.
-  @inline(never) // The copy loop blocks retain release matching.
-  public func _uninitializedCopy(
-    subRange: Range<Int>, target: UnsafeMutablePointer<Element>
+  public func _copyContents(
+    subRange bounds: Range<Int>,
+    initializing target: UnsafeMutablePointer<Element>
   ) -> UnsafeMutablePointer<Element> {
-    _typeCheck(subRange)
+    _typeCheck(bounds)
     if _fastPath(_isNative) {
-      return _native._uninitializedCopy(subRange, target: target)
+      return _native._copyContents(subRange: bounds, initializing: target)
     }
 
     let nonNative = _nonNative
 
     let nsSubRange = SwiftShims._SwiftNSRange(
-      location:subRange.startIndex,
-      length: subRange.endIndex - subRange.startIndex)
+      location: bounds.startIndex,
+      length: bounds.endIndex - bounds.startIndex)
 
     let buffer = UnsafeMutablePointer<AnyObject>(target)
     
@@ -223,21 +224,21 @@ extension _ArrayBuffer {
     
     // Make another pass to retain the copied objects
     var result = target
-    for _ in subRange {
-      result.initialize(result.memory)
-      ++result
+    for _ in bounds {
+      result.initialize(with: result.pointee)
+      result += 1
     }
     return result
   }
 
-  /// Return a `_SliceBuffer` containing the given `subRange` of values
-  /// from this buffer.
-  public subscript(subRange: Range<Int>) -> _SliceBuffer<Element> {
+  /// Returns a `_SliceBuffer` containing the given sub-range of elements in
+  /// `bounds` from this buffer.
+  public subscript(bounds: Range<Int>) -> _SliceBuffer<Element> {
     get {
-      _typeCheck(subRange)
+      _typeCheck(bounds)
 
       if _fastPath(_isNative) {
-        return _native[subRange]
+        return _native[bounds]
       }
 
       // Look for contiguous storage in the NSArray
@@ -249,23 +250,23 @@ extension _ArrayBuffer {
         return _SliceBuffer(
           owner: nonNative,
           subscriptBaseAddress: UnsafeMutablePointer(cocoaStorageBaseAddress),
-          indices: subRange,
+          indices: bounds,
           hasNativeBuffer: false)
       }
 
       // No contiguous storage found; we must allocate
-      let subRangeCount = subRange.count
+      let boundsCount = bounds.count
       let result = _ContiguousArrayBuffer<Element>(
-        count: subRangeCount, minimumCapacity: 0)
+        uninitializedCount: boundsCount, minimumCapacity: 0)
 
       // Tell Cocoa to copy the objects into our storage
       cocoa.buffer.getObjects(
         UnsafeMutablePointer(result.firstElementAddress),
         range: _SwiftNSRange(
-          location: subRange.startIndex,
-          length: subRangeCount))
+          location: bounds.startIndex,
+          length: boundsCount))
 
-      return _SliceBuffer(result, shiftedToStartIndex: subRange.startIndex)
+      return _SliceBuffer(result, shiftedToStartIndex: bounds.startIndex)
     }
     set {
       fatalError("not implemented")
@@ -305,7 +306,7 @@ extension _ArrayBuffer {
   /// wasNative == _isNative in the absence of inout violations.
   /// Because the optimizer can hoist the original check it might have
   /// been invalidated by illegal user code.
-  internal func _checkInoutAndNativeBounds(index: Int, wasNative: Bool) {
+  internal func _checkInoutAndNativeBounds(_ index: Int, wasNative: Bool) {
     _precondition(
       _isNative == wasNative,
       "inout rules were violated: the array was overwritten")
@@ -324,7 +325,7 @@ extension _ArrayBuffer {
   /// inout violations.  Because the optimizer can hoist the original
   /// check it might have been invalidated by illegal user code.
   internal func _checkInoutAndNativeTypeCheckedBounds(
-    index: Int, wasNativeTypeChecked: Bool
+    _ index: Int, wasNativeTypeChecked: Bool
   ) {
     _precondition(
       _isNativeTypeChecked == wasNativeTypeChecked,
@@ -340,18 +341,20 @@ extension _ArrayBuffer {
     return _fastPath(_isNative) ? _native.capacity : _nonNative.count
   }
 
+  @_versioned
   @inline(__always)
   @warn_unused_result
-  func getElement(i: Int, wasNativeTypeChecked: Bool) -> Element {
+  func getElement(_ i: Int, wasNativeTypeChecked: Bool) -> Element {
     if _fastPath(wasNativeTypeChecked) {
       return _nativeTypeChecked[i]
     }
-    return unsafeBitCast(_getElementSlowPath(i), Element.self)
+    return unsafeBitCast(_getElementSlowPath(i), to: Element.self)
   }
 
+  @_versioned
   @inline(never)
   @warn_unused_result
-  func _getElementSlowPath(i: Int) -> AnyObject {
+  func _getElementSlowPath(_ i: Int) -> AnyObject {
     _sanityCheck(
       _isClassOrObjCExistential(Element.self),
       "Only single reference elements can be indexed here.")
@@ -362,13 +365,13 @@ extension _ArrayBuffer {
       // have to do it here.
       _native._checkValidSubscript(i)
       
-      element = castToBufferOf(AnyObject.self)._native[i]
+      element = cast(toBufferOf: AnyObject.self)._native[i]
       _precondition(
         element is Element,
         "Down-casted Array element failed to match the target type")
     } else {
       // ObjC arrays do their own subscript checking.
-      element = _nonNative.objectAtIndex(i)
+      element = _nonNative.objectAt(i)
       _precondition(
         element is Element,
         "NSArray element failed to match the Swift Array Element type")
@@ -398,12 +401,12 @@ extension _ArrayBuffer {
   /// underlying contiguous storage.  If no such storage exists, it is
   /// created on-demand.
   public func withUnsafeBufferPointer<R>(
-    @noescape body: (UnsafeBufferPointer<Element>) throws -> R
+    @noescape _ body: (UnsafeBufferPointer<Element>) throws -> R
   ) rethrows -> R {
     if _fastPath(_isNative) {
       defer { _fixLifetime(self) }
-      return try body(UnsafeBufferPointer(start: firstElementAddress,
-                                          count: count))
+      return try body(
+        UnsafeBufferPointer(start: firstElementAddress, count: count))
     }
     return try ContiguousArray(self).withUnsafeBufferPointer(body)
   }
@@ -411,9 +414,9 @@ extension _ArrayBuffer {
   /// Call `body(p)`, where `p` is an `UnsafeMutableBufferPointer`
   /// over the underlying contiguous storage.
   ///
-  /// - Requires: Such contiguous storage exists or the buffer is empty.
+  /// - Precondition: Such contiguous storage exists or the buffer is empty.
   public mutating func withUnsafeMutableBufferPointer<R>(
-    @noescape body: (UnsafeMutableBufferPointer<Element>) throws -> R
+    @noescape _ body: (UnsafeMutableBufferPointer<Element>) throws -> R
   ) rethrows -> R {
     _sanityCheck(
       firstElementAddress != nil || count == 0,
@@ -431,7 +434,7 @@ extension _ArrayBuffer {
   
   /// An object that keeps the elements stored in this buffer alive.
   ///
-  /// - Requires: This buffer is backed by a `_ContiguousArrayBuffer`.
+  /// - Precondition: This buffer is backed by a `_ContiguousArrayBuffer`.
   public var nativeOwner: AnyObject {
     _sanityCheck(_isNative, "Expect a native array")
     return _native._storage
@@ -445,11 +448,11 @@ extension _ArrayBuffer {
       return _native.identity
     }
     else {
-      return unsafeAddressOf(_nonNative)
+      return unsafeAddress(of: _nonNative)
     }
   }
   
-  //===--- CollectionType conformance -------------------------------------===//
+  //===--- Collection conformance -------------------------------------===//
   /// The position of the first element in a non-empty collection.
   ///
   /// In an empty collection, `startIndex == endIndex`.
@@ -470,11 +473,11 @@ extension _ArrayBuffer {
   typealias Storage = _ContiguousArrayStorage<Element>
   public typealias NativeBuffer = _ContiguousArrayBuffer<Element>
 
+  @_versioned
   var _isNative: Bool {
     if !_isClassOrObjCExistential(Element.self) {
       return true
-    }
-    else {
+    } else {
       return _storage.isNative
     }
   }
@@ -483,15 +486,15 @@ extension _ArrayBuffer {
   var _isNativeTypeChecked: Bool {
     if !_isClassOrObjCExistential(Element.self) {
       return true
-    }
-    else {
+    } else {
       return _storage.isNativeWithClearedSpareBits(deferredTypeCheckMask)
     }
   }
 
   /// Our native representation.
   ///
-  /// - Requires: `_isNative`.
+  /// - Precondition: `_isNative`.
+  @_versioned
   var _native: NativeBuffer {
     return NativeBuffer(
       _isClassOrObjCExistential(Element.self)
@@ -500,16 +503,18 @@ extension _ArrayBuffer {
 
   /// Fast access to the native representation.
   ///
-  /// - Requires: `_isNativeTypeChecked`.
+  /// - Precondition: `_isNativeTypeChecked`.
+  @_versioned
   var _nativeTypeChecked: NativeBuffer {
     return NativeBuffer(_storage.nativeInstance_noSpareBits)
   }
 
-  var _nonNative: _NSArrayCoreType {
+  @_versioned
+  var _nonNative: _NSArrayCore {
     @inline(__always)
     get {
       _sanityCheck(_isClassOrObjCExistential(Element.self))
-        return _storage.objCInstance
+      return _storage.objCInstance
     }
   }
 }

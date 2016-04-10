@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -23,15 +23,15 @@ extension NSLocale {
 }
 
 public func withOverriddenNSLocaleCurrentLocale<Result>(
-  temporaryLocale: NSLocale,
+  _ temporaryLocale: NSLocale,
   @noescape _ body: () -> Result
 ) -> Result {
   let oldMethod = class_getClassMethod(
-    NSLocale.self, Selector("currentLocale"))
+    NSLocale.self, #selector(NSLocale.current))
   precondition(oldMethod != nil, "could not find +[NSLocale currentLocale]")
 
   let newMethod = class_getClassMethod(
-    NSLocale.self, Selector("_swiftUnittest_currentLocale"))
+    NSLocale.self, #selector(NSLocale._swiftUnittest_currentLocale))
   precondition(newMethod != nil, "could not find +[NSLocale _swiftUnittest_currentLocale]")
 
   precondition(_temporaryNSLocaleCurrentLocale == nil,
@@ -47,7 +47,7 @@ public func withOverriddenNSLocaleCurrentLocale<Result>(
 }
 
 public func withOverriddenNSLocaleCurrentLocale<Result>(
-  temporaryLocaleIdentifier: String,
+  _ temporaryLocaleIdentifier: String,
   @noescape _ body: () -> Result
 ) -> Result {
   precondition(
@@ -65,7 +65,7 @@ public func withOverriddenNSLocaleCurrentLocale<Result>(
 /// return-autoreleased optimization.)
 @inline(never)
 public func autoreleasepoolIfUnoptimizedReturnAutoreleased(
-  @noescape body: () -> Void
+  @noescape _ body: () -> Void
 ) {
 #if arch(i386) && (os(iOS) || os(watchOS))
   autoreleasepool(body)
@@ -73,4 +73,3 @@ public func autoreleasepoolIfUnoptimizedReturnAutoreleased(
   body()
 #endif
 }
-

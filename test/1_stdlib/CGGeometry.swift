@@ -5,18 +5,18 @@
 
 import CoreGraphics
 
-func print_(r: CGPoint, _ prefix: String) {
+func print_(_ r: CGPoint, _ prefix: String) {
   print("\(prefix) \(r.x) \(r.y)")
 }
-func print_(r: CGSize, _ prefix: String) {
+func print_(_ r: CGSize, _ prefix: String) {
   print("\(prefix) \(r.width) \(r.height)")
 }
 
-func print_(r: CGVector, _ prefix: String) {
+func print_(_ r: CGVector, _ prefix: String) {
   print("\(prefix) \(r.dx) \(r.dy)")
 }
 
-func print_(r: CGRect, _ prefix: String) {
+func print_(_ r: CGRect, _ prefix: String) {
   print("\(prefix) \(r.origin.x) \(r.origin.y) \(r.size.width) \(r.size.height)")
 }
 
@@ -235,7 +235,7 @@ assert(!rect.contains(bigRect))
 
 
 rect = CGRect(x: 11.25, y: 22.25, width: 33.25, height: 44.25)
-var (slice, remainder) = rect.divide(5, fromEdge:CGRectEdge.MinXEdge)
+var (slice, remainder) = rect.divide(5, fromEdge:CGRectEdge.minXEdge)
 print_(slice, "slice")
 print_(remainder, "remainder")
 // CHECK-NEXT: slice 11.25 22.25 5.0 44.25

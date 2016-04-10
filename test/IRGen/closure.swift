@@ -11,7 +11,7 @@ func a(i i: Int) -> (Int) -> Int {
 }
 
 // -- Closure entry point
-// CHECK: define linkonce_odr hidden i64 @[[CLOSURE1:_TFF7closure1aFT1iSi_FSiSiU_FSiSi]](i64, i64)
+// CHECK: define linkonce_odr hidden i64 @_TFF7closure1aFT1iSi_FSiSiU_FSiSi(i64, i64)
 
 protocol Ordinable {
   func ord() -> Int
@@ -22,7 +22,7 @@ func b<T : Ordinable>(seq seq: T) -> (Int) -> Int {
 }
 
 // -- partial_apply stub
-// CHECK: define internal i64 @_TPA_[[CLOSURE1]](i64, %swift.refcounted*) {{.*}} {
+// CHECK: define internal i64 @_TPA__TFF7closure1aFT1iSi_FSiSiU_FSiSi(i64, %swift.refcounted*)
 // CHECK: }
 
 // -- Closure entry point
@@ -40,8 +40,8 @@ func b<T : Ordinable>(seq seq: T) -> (Int) -> Int {
 // CHECK:   [[WITNESS:%.*]] = load i8**, i8*** [[WITNESSADDR]], align 8
 // CHECK:   [[BOXADDR:%.*]] = getelementptr inbounds <{ %swift.refcounted, [16 x i8], %swift.refcounted* }>, <{ %swift.refcounted, [16 x i8], %swift.refcounted* }>* [[CONTEXT]], i32 0, i32 2
 // CHECK:   [[BOX:%.*]] = load %swift.refcounted*, %swift.refcounted** [[BOXADDR]], align 8
-// CHECK:   call void @swift_retain(%swift.refcounted* [[BOX]])
-// CHECK:   call void @swift_release(%swift.refcounted* %1)
+// CHECK:   call void @rt_swift_retain(%swift.refcounted* [[BOX]])
+// CHECK:   call void @rt_swift_release(%swift.refcounted* %1)
 // CHECK:   [[RES:%.*]] = tail call i64 @[[CLOSURE2]](i64 %0, %swift.refcounted* [[BOX]], %swift.type* [[TYPE]], i8** [[WITNESS]])
 // CHECK:   ret i64 [[RES]]
 // CHECK: }

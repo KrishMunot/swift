@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -115,6 +115,8 @@ static UIdent KindDeclExtensionStruct("source.lang.swift.decl.extension.struct")
 static UIdent KindDeclExtensionClass("source.lang.swift.decl.extension.class");
 static UIdent KindDeclExtensionEnum("source.lang.swift.decl.extension.enum");
 static UIdent KindDeclExtensionProtocol("source.lang.swift.decl.extension.protocol");
+static UIdent KindDeclAssociatedType("source.lang.swift.decl.associatedtype");
+static UIdent KindRefAssociatedType("source.lang.swift.ref.associatedtype");
 static UIdent KindDeclTypeAlias("source.lang.swift.decl.typealias");
 static UIdent KindRefTypeAlias("source.lang.swift.ref.typealias");
 static UIdent KindDeclGenericTypeParam("source.lang.swift.decl.generic_type_param");
@@ -147,11 +149,13 @@ LangSupport::createSwiftLangSupport(SourceKit::Context &SKCtx) {
   return std::unique_ptr<LangSupport>(new SwiftLangSupport(SKCtx));
 }
 
+const std::string LangSupport::SynthesizedUSRSeparator = "::SYNTHESIZED::";
+
 namespace {
 
 class UIdentVisitor : public ASTVisitor<UIdentVisitor,
                                         UIdent, UIdent, UIdent, UIdent > {
-  bool IsRef;
+  const bool IsRef;
 
 public:
   explicit UIdentVisitor(bool IsRef) : IsRef(IsRef) { }
@@ -161,9 +165,10 @@ public:
 
   UIdent visitFuncDecl(const FuncDecl *D);
   UIdent visitVarDecl(const VarDecl *D);
+  UIdent visitParamDecl(const ParamDecl *D);
   UIdent visitExtensionDecl(const ExtensionDecl *D);
   UIdent visitAssociatedTypeDecl(const AssociatedTypeDecl *D) {
-    return IsRef ? KindRefTypeAlias : KindDeclTypeAlias;
+    return IsRef ? KindRefAssociatedType : KindDeclAssociatedType;
   }
 
 #define UID_FOR(CLASS) \
@@ -192,8 +197,8 @@ UIdent UIdentVisitor::visitFuncDecl(const FuncDecl *D) {
                                                IsRef);
   }
 
-  if (D->isOperator()) {
-    switch (D->getOperatorDecl()->getKind()) {
+  if (auto *Op = D->getOperatorDecl()) {
+    switch (Op->getKind()) {
     case DeclKind::PrefixOperator:
       return IsRef ? KindRefFunctionPrefixOperator : KindDeclFunctionPrefixOperator;
     case DeclKind::PostfixOperator:
@@ -234,6 +239,11 @@ UIdent UIdentVisitor::visitVarDecl(const VarDecl *D) {
   return IsRef ? KindRefVarGlobal : KindDeclVarGlobal;
 }
 
+UIdent UIdentVisitor::visitParamDecl(const ParamDecl *D) {
+  // There is no KindRefVarParam. It's not usually an interesting difference.
+  return IsRef ? KindRefVarLocal : KindDeclVarParam;
+}
+
 UIdent UIdentVisitor::visitExtensionDecl(const ExtensionDecl *D) {
   assert(!IsRef && "reference to an extension ?");
   if (NominalTypeDecl *NTD = D->getExtendedType()->getAnyNominal()) {
@@ -265,6 +275,21 @@ SwiftLangSupport::~SwiftLangSupport() {
 
 UIdent SwiftLangSupport::getUIDForDecl(const Decl *D, bool IsRef) {
   return UIdentVisitor(IsRef).visit(const_cast<Decl*>(D));
+}
+
+UIdent SwiftLangSupport::getUIDForExtensionOfDecl(const Decl *D) {
+  switch (D->getKind()) {
+    case swift::DeclKind::Struct:
+      return KindDeclExtensionStruct;
+    case swift::DeclKind::Enum:
+      return KindDeclExtensionEnum;
+    case swift::DeclKind::Class:
+      return KindDeclExtensionClass;
+    case swift::DeclKind::Protocol:
+      return KindDeclExtensionProtocol;
+    default:
+      llvm_unreachable("cannot have extension.");
+  }
 }
 
 UIdent SwiftLangSupport::getUIDForLocalVar(bool IsRef) {
@@ -312,6 +337,7 @@ UIdent SwiftLangSupport::getUIDForCodeCompletionDeclKind(
     case CodeCompletionDeclKind::Enum: return KindRefEnum;
     case CodeCompletionDeclKind::EnumElement: return KindRefEnumElement;
     case CodeCompletionDeclKind::Protocol: return KindRefProtocol;
+    case CodeCompletionDeclKind::AssociatedType: return KindRefAssociatedType;
     case CodeCompletionDeclKind::TypeAlias: return KindRefTypeAlias;
     case CodeCompletionDeclKind::GenericTypeParam: return KindRefGenericTypeParam;
     case CodeCompletionDeclKind::Constructor: return KindRefConstructor;
@@ -337,6 +363,7 @@ UIdent SwiftLangSupport::getUIDForCodeCompletionDeclKind(
   case CodeCompletionDeclKind::Enum: return KindDeclEnum;
   case CodeCompletionDeclKind::EnumElement: return KindDeclEnumElement;
   case CodeCompletionDeclKind::Protocol: return KindDeclProtocol;
+  case CodeCompletionDeclKind::AssociatedType: return KindDeclAssociatedType;
   case CodeCompletionDeclKind::TypeAlias: return KindDeclTypeAlias;
   case CodeCompletionDeclKind::GenericTypeParam: return KindDeclGenericTypeParam;
   case CodeCompletionDeclKind::Constructor: return KindDeclConstructor;

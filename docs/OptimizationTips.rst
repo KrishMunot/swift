@@ -1,7 +1,8 @@
-:orphan:
-
+===================================
 Writing High-Performance Swift Code
 ===================================
+
+.. contents:: :local:
 
 The following document is a gathering of various tips and tricks for writing
 high-performance Swift code. The intended audience of this document is compiler
@@ -44,12 +45,13 @@ Whole Module Optimizations
 ==========================
 
 By default Swift compiles each file individually. This allows Xcode to
-compile multiple files in parallel very quickly. However, compiling each file
-separately prevents certain compiler optimizations. Swift can also compile
-the entire program as if it were one file and optimize the program as if it
-were a single compilation unit. This mode is enabled using the command
-line flag ``-whole-module-optimization``. Programs that are compiled in
-this mode will most likely take longer to compile, but may run faster.
+compile multiple files in parallel very quickly. However, compiling
+each file separately prevents certain compiler optimizations. Swift
+can also compile the entire program as if it were one file and
+optimize the program as if it were a single compilation unit. This
+mode is enabled using the ``swiftc`` command line flag
+``-whole-module-optimization``. Programs that are compiled in this
+mode will most likely take longer to compile, but may run faster.
 
 This mode can be enabled using the Xcode build setting 'Whole Module Optimization'.
 
@@ -57,9 +59,9 @@ This mode can be enabled using the Xcode build setting 'Whole Module Optimizatio
 Reducing Dynamic Dispatch
 =========================
 
-Swift by default is a very dynamic language like Objective-C. Unlike Objective
-C, Swift gives the programmer the ability to improve runtime performance when
-necessary by removing or reducing this dynamicism. This section goes through
+Swift by default is a very dynamic language like Objective-C. Unlike Objective-C,
+Swift gives the programmer the ability to improve runtime performance when
+necessary by removing or reducing this dynamism. This section goes through
 several examples of language constructs that can be used to perform such an
 operation.
 
@@ -87,7 +89,7 @@ in the following code snippet, ``a.aProperty``, ``a.doSomething()`` and
     override func doSomething() { ... }
   }
 
-  func usingAnA(a: A) {
+  func usingAnA(_ a: A) {
     a.doSomething()
     a.aProperty = ...
   }
@@ -122,12 +124,12 @@ in the following ``C.array1`` and ``D.array1`` will be accessed directly
     var array2: [Int]      // 'array2' *can* be overridden by a computed property.
   }
 
-  func usingC(c: C) {
+  func usingC(_ c: C) {
      c.array1[i] = ... // Can directly access C.array without going through dynamic dispatch.
      c.doSomething() = ... // Can directly call C.doSomething without going through virtual dispatch.
   }
 
-  func usingD(d: D) {
+  func usingD(_ d: D) {
      d.array1[i] = ... // Can directly access D.array1 without going through dynamic dispatch.
      d.array2[i] = ... // Will access D.array2 through dynamic dispatch.
   }
@@ -154,13 +156,13 @@ do not have any overriding declarations in the same file:
     private var myPrivateVar : Int
   }
 
-  func usingE(e: E) {
+  func usingE(_ e: E) {
     e.doSomething() // There is no sub class in the file that declares this class.
                     // The compiler can remove virtual calls to doSomething()
-                    // and directly call A’s doSomething method.
+                    // and directly call A's doSomething method.
   }
 
-  func usingF(f: F) -> Int {
+  func usingF(_ f: F) -> Int {
     return f.myPrivateVar
   }
 
@@ -176,7 +178,7 @@ Advice: Use value types in Array
 
 In Swift, types can be divided into two different categories: value types
 (structs, enums, tuples) and reference types (classes). A key distinction is
-that value types can not be included inside an NSArray. Thus when using value
+that value types cannot be included inside an NSArray. Thus when using value
 types, the optimizer can remove most of the overhead in Array that is necessary
 to handle the possibility of the array being backed an NSArray.
 
@@ -237,7 +239,7 @@ end of the callee. This means that if one writes a function like the following:
 
 ::
 
-  func append_one(a: [Int]) -> [Int] {
+  func append_one(_ a: [Int]) -> [Int] {
     a.append(1)
     return a
   }
@@ -251,7 +253,7 @@ through the usage of ``inout`` parameters:
 
 ::
 
-  func append_one_in_place(inout a: [Int]) {
+  func append_one_in_place(a: inout [Int]) {
     a.append(1)
   }
 
@@ -265,7 +267,7 @@ Swift eliminates integer overflow bugs by checking for overflow when performing
 normal arithmetic. These checks are not appropriate in high performance code
 where one knows that no memory safety issues can result.
 
-Advice: Use unchecked integer arithmetic when you can prove that overflow can not occur
+Advice: Use unchecked integer arithmetic when you can prove that overflow cannot occur
 ---------------------------------------------------------------------------------------
 
 In performance-critical code you can elide overflow checks if you know it is
@@ -311,11 +313,11 @@ generics. Some more examples of generics:
 ::
 
   class MyStack<T> {
-    func push(element: T) { ... }
+    func push(_ element: T) { ... }
     func pop() -> T { ... }
   }
 
-  func myAlgorithm(a: [T], length: Int) { ... }
+  func myAlgorithm(_ a: [T], length: Int) { ... }
 
   // The compiler can specialize code of MyStack[Int]
   var stackOfInts: MyStack[Int]
@@ -330,64 +332,52 @@ generics. Some more examples of generics:
   // [Int]' types.
   myAlgorithm(arrayOfInts, arrayOfInts.length)
 
-Advice: Put generic declarations in the same file where they are used
----------------------------------------------------------------------
+Advice: Put generic declarations in the same module where they are used
+-----------------------------------------------------------------------
 
-The optimizer can only perform specializations if the definition of the generic
-declaration is visible in the current Module. This can only occur if the
-declaration is in the same file as the invocation of the generic. *NOTE* The
-standard library is a special case. Definitions in the standard library are
-visible in all modules and available for specialization.
+The optimizer can only perform specialization if the definition of
+the generic declaration is visible in the current Module. This can
+only occur if the declaration is in the same file as the invocation of
+the generic, unless the ``-whole-module-optimization`` flag is
+used. *NOTE* The standard library is a special case. Definitions in
+the standard library are visible in all modules and available for
+specialization.
 
-Advice: Allow the compiler to perform generic specialization
-------------------------------------------------------------
+Advice: Use @_specialize to direct the compiler to specialize generics
+----------------------------------------------------------------------
 
-The compiler can only specialize generic code if the call site and the callee
-function are located in the same compilation unit. One trick that we can use to
-allow compiler to optimize the callee function is to write code that performs a
-type check in the same compilation unit as the callee function. The code behind
-the type check then re-dispatches the call to the generic function - but this
-time it has the type information. In the code sample below we've inserted a type
-check into the function "play_a_game" and made the code run hundreds of times
-faster.
+The compiler only automatically specializes generic code if the call
+site and the callee function are located in the same module. However, the programmer can provide hints to the compiler in the form of @_specialize attributes. See :ref:`generics-specialization` for details.
+
+This attribute instructs the compiler to specialize on the specified concrete type list. The compiler inserts type checks and dispatches from the generic function to the specialized variant. In the following example, injecting the @_specialize attribute speeds up the code by about 10 times.
 
 ::
 
-  //Framework.swift:
+  /// --------------- 
+  /// Framework.swift
 
-  protocol Pingable { func ping() -> Self }
-  protocol Playable { func play() }
-
+  public protocol Pingable { func ping() -> Self }
+  public protocol Playable { func play() }
+   
   extension Int : Pingable {
-    func ping() -> Int { return self + 1 }
+    public func ping() -> Int { return self + 1 }
   }
-
-  class Game<T : Pingable> : Playable {
+   
+  public class Game<T : Pingable> : Playable {
     var t : T
-
-    init (_ v : T) {t = v}
-
-    func play() {
+   
+    public init (_ v : T) {t = v}
+   
+    @_specialize(Int)
+    public func play() {
       for _ in 0...100_000_000 { t = t.ping() }
     }
   }
 
-  func play_a_game(game : Playable ) {
-    // This check allows the optimizer to specialize the
-    // generic call 'play'
-    if let z = game as? Game<Int> {
-      z.play()
-    } else {
-      game.play()
-    }
-  }
+  /// -----------------
+  /// Application.swift
 
-  /// -------------- >8
-
-  // Application.swift:
-
-  play_a_game(Game(10))
-
+  Game(10).play
 
 The cost of large swift values
 ==============================
@@ -446,7 +436,7 @@ argument drops from being O(n), depending on the size of the tree to O(1).
 
 ::
 
-  struct tree : P {
+  struct Tree : P {
     var node : [P?]
     init() {
       node = [ thing ]
@@ -525,19 +515,45 @@ count operations are expensive and unavoidable when using Swift classes.
 Advice: Use unmanaged references to avoid reference counting overhead
 ---------------------------------------------------------------------
 
-In performance-critical code you can use choose to use unmanaged
-references. The ``Unmanaged<T>`` structure allows developers to disable
-automatic reference counting for a specific reference.
+Note, ``Unmanaged<T>._withUnsafeGuaranteedRef`` is not public api and will go
+away in the future. Therefore, don't use it in code that you can not change in
+the future.
+
+In performance-critical code you can choose to use unmanaged references. The
+``Unmanaged<T>`` structure allows developers to disable automatic reference
+counting for a specific reference.
+
+When you do this you need to make sure that there exists another reference to
+instance held by the ``Unmanaged`` struct instance for the duration of the use
+of ``Unmanaged`` (see `Unmanaged.swift`_ for more details) that keeps the instance
+alive.
 
 ::
 
-    var Ref : Unmanaged<Node> = Unmanaged.passUnretained(Head)
+    // The call to ``withExtendedLifetime(Head)`` makes sure that the lifetime of
+    // Head is guaranteed to extend over the region of code that uses Unmanaged
+    // references. Because there exists a reference to Head for the duration
+    // of the scope and we don't modify the list of ``Node``s there also exist a
+    // reference through the chain of ``Head.next``, ``Head.next.next``, ...
+    // instances.
 
-    while let Next = Ref.takeUnretainedValue().next {
-      ...
-      Ref = Unmanaged.passUnretained(Next)
+    withExtendedLifetime(Head) {
+
+      // Create an Unmanaged reference.
+      var Ref : Unmanaged<Node> = Unmanaged.passUnretained(Head)
+
+      // Use the unmanaged reference in a call/variable access. The use of
+      // _withUnsafeGuaranteedRef allows the compiler to remove the ultimate
+      // retain/release across the call/access.
+
+      while let Next = Ref._withUnsafeGuaranteedRef { $0.next } {
+        ...
+        Ref = Unmanaged.passUnretained(Next)
+      }
     }
 
+
+.. _Unmanaged.swift: https://github.com/apple/swift/blob/master/stdlib/public/core/Unmanaged.swift
 
 Protocols
 =========

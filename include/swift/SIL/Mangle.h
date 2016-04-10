@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -13,7 +13,6 @@
 #ifndef SWIFT_SIL_MANGLE_H
 #define SWIFT_SIL_MANGLE_H
 
-#include "llvm/ADT/DenseMap.h"
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/NullablePtr.h"
 #include "swift/AST/Decl.h"
@@ -21,15 +20,16 @@
 #include "swift/AST/ResilienceExpansion.h"
 #include "swift/AST/Types.h"
 #include "swift/SIL/SILFunction.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace swift {
 
 class AbstractClosureExpr;
 
-namespace Mangle {
-
 enum class SpecializationKind : uint8_t {
   Generic,
+  NotReAbstractedGeneric,
   FunctionSignature,
 };
 
@@ -40,7 +40,8 @@ class SpecializationManglerBase {
 protected:
   SpecializationKind Kind;
   SpecializationPass Pass;
-  Mangler &M;
+  Mangle::Mangler &M;
+  IsFragile_t Fragile;
   SILFunction *Function;
 
 public:
@@ -57,34 +58,43 @@ public:
 
 protected:
   SpecializationManglerBase(SpecializationKind K, SpecializationPass P,
-                            Mangler &M, SILFunction *F)
-      : Kind(K), Pass(P), M(M), Function(F) {}
+                            Mangle::Mangler &M, IsFragile_t Fragile,
+                            SILFunction *F)
+      : Kind(K), Pass(P), M(M), Fragile(Fragile), Function(F) {}
 
-  llvm::raw_ostream &getBuffer() { return M.Buffer; }
   SILFunction *getFunction() const { return Function; }
-  Mangler &getMangler() const { return M; }
+  Mangle::Mangler &getMangler() const { return M; }
 
   void mangleKind() {
     switch (Kind) {
     case SpecializationKind::Generic:
-      M.Buffer << "g";
+      M.append("g");
+      break;
+    case SpecializationKind::NotReAbstractedGeneric:
+      M.append("r");
       break;
     case SpecializationKind::FunctionSignature:
-      M.Buffer << "f";
+      M.append("f");
       break;
     }
   }
 
   void manglePass() {
-    M.Buffer << encodeSpecializationPass(Pass);
+    M.append(encodeSpecializationPass(Pass));
   }
 
   void mangleSpecializationPrefix() {
-    M.Buffer << "_TTS";
+    M.append("_TTS");
+  }
+
+  void mangleFragile() {
+    if (Fragile)
+      M.append("q");
   }
 
   void mangleFunctionName() {
-    M.Buffer << "_" << Function->getName();
+    M.append("_");
+    M.appendSymbol(Function->getName());
   }
 };
 
@@ -92,7 +102,7 @@ protected:
 /// specific specialization kind.
 template <typename SubType>
 class SpecializationMangler : public SpecializationManglerBase {
-  SubType *asImpl() { return reinterpret_cast<SubType *>(this); }
+  SubType *asImpl() { return static_cast<SubType *>(this); }
 public:
 
   ~SpecializationMangler() = default;
@@ -106,15 +116,17 @@ public:
   void mangle() {
     mangleSpecializationPrefix();
     mangleKind();
+    mangleFragile();
     manglePass();
     asImpl()->mangleSpecialization();
     mangleFunctionName();
   }
 
 protected:
-  SpecializationMangler(SpecializationKind K, SpecializationPass P, Mangler &M,
+  SpecializationMangler(SpecializationKind K, SpecializationPass P,
+                        Mangle::Mangler &M, IsFragile_t Fragile,
                         SILFunction *F)
-      : SpecializationManglerBase(K, P, M, F) {}
+      : SpecializationManglerBase(K, P, M, Fragile, F) {}
 };
 
 class GenericSpecializationMangler :
@@ -125,11 +137,21 @@ class GenericSpecializationMangler :
   ArrayRef<Substitution> Subs;
 
 public:
-  GenericSpecializationMangler(Mangler &M, SILFunction *F,
-                               ArrayRef<Substitution> Subs)
-    : SpecializationMangler(SpecializationKind::Generic,
+
+  enum ReAbstractionMode {
+    ReAbstracted,
+    NotReabstracted
+  };
+
+  GenericSpecializationMangler(Mangle::Mangler &M, SILFunction *F,
+                               ArrayRef<Substitution> Subs,
+                               IsFragile_t Fragile,
+                               ReAbstractionMode isReAbstracted = ReAbstracted)
+    : SpecializationMangler(isReAbstracted == ReAbstracted ?
+                              SpecializationKind::Generic :
+                              SpecializationKind::NotReAbstractedGeneric,
                             SpecializationPass::GenericSpecializer,
-                            M, F), Subs(Subs) {}
+                            M, Fragile, F), Subs(Subs) {}
 
 private:
   void mangleSpecialization();
@@ -139,6 +161,18 @@ class FunctionSignatureSpecializationMangler
   : public SpecializationMangler<FunctionSignatureSpecializationMangler> {
 
   friend class SpecializationMangler<FunctionSignatureSpecializationMangler>;
+
+  using ReturnValueModifierIntBase = uint16_t;
+  enum class ReturnValueModifier : ReturnValueModifierIntBase {
+    // Option Space 4 bits (i.e. 16 options).
+    Unmodified=0,
+    First_Option=0, Last_Option=31,
+
+    // Option Set Space. 12 bits (i.e. 12 option).
+    Dead=32,
+    OwnedToUnowned=64,
+    First_OptionSetEntry=32, LastOptionSetEntry=32768,
+  };
 
   // We use this private typealias to make it easy to expand ArgumentModifier's
   // size if we need to.
@@ -163,9 +197,13 @@ class FunctionSignatureSpecializationMangler
                             NullablePtr<SILInstruction>>;
   llvm::SmallVector<ArgInfo, 8> Args;
 
+  ReturnValueModifierIntBase ReturnValue;
+
 public:
   FunctionSignatureSpecializationMangler(SpecializationPass Pass,
-                                         Mangler &M, SILFunction *F);
+                                         Mangle::Mangler &M,
+                                         IsFragile_t Fragile,
+                                         SILFunction *F);
   void setArgumentConstantProp(unsigned ArgNo, LiteralInst *LI);
   void setArgumentClosureProp(unsigned ArgNo, PartialApplyInst *PAI);
   void setArgumentClosureProp(unsigned ArgNo, ThinToThickFunctionInst *TTTFI);
@@ -174,6 +212,7 @@ public:
   void setArgumentSROA(unsigned ArgNo);
   void setArgumentBoxToValue(unsigned ArgNo);
   void setArgumentBoxToStack(unsigned ArgNo);
+  void setReturnValueOwnedToUnowned();
 
 private:
   void mangleSpecialization();
@@ -182,9 +221,9 @@ private:
   void mangleClosureProp(ThinToThickFunctionInst *TTTFI);
   void mangleArgument(ArgumentModifierIntBase ArgMod,
                       NullablePtr<SILInstruction> Inst);
+  void mangleReturnValue(ReturnValueModifierIntBase RetMod);
 };
 
-} // end namespace Mangle
 } // end namespace swift
 
 #endif

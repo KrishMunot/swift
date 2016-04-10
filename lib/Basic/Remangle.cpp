@@ -1,20 +1,20 @@
-//===--- Remangle.cpp - Swift re-mangling from a demangling tree ---------===//
+//===--- Remangle.cpp - Swift re-mangling from a demangling tree ----------===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
 // See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
-//===---------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 //
 //  This file implements the remangler, which turns a demangling parse
 //  tree back into a mangled string.  This is useful for tools which
 //  want to extract subtrees from mangled strings.
 //
-//===---------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/LLVM.h"
@@ -24,6 +24,7 @@
 #include "swift/Strings.h"
 #include "llvm/ADT/StringRef.h"
 #include <vector>
+#include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -70,6 +71,16 @@ static bool isNonAscii(StringRef str) {
   return false;
 }
 
+static char mangleOperatorKind(OperatorKind operatorKind) {
+  switch (operatorKind) {
+  case OperatorKind::NotOperator: unreachable("invalid");
+  case OperatorKind::Infix: return 'i';
+  case OperatorKind::Prefix: return 'p';
+  case OperatorKind::Postfix: return 'P';
+  }
+  unreachable("invalid");
+}
+
 static void mangleIdentifier(StringRef ident, OperatorKind operatorKind,
                              bool usePunycode, DemanglerPrinter &out) {
   std::string punycodeBuf;
@@ -99,15 +110,7 @@ static void mangleIdentifier(StringRef ident, OperatorKind operatorKind,
   //   operator-fixity ::= 'i' // infix
   // where the count is the number of characters in the operator,
   // and where the individual operator characters are translated.
-  out << 'o' << [=] {
-    switch (operatorKind) {
-    case OperatorKind::NotOperator: unreachable("invalid");
-    case OperatorKind::Infix: return 'i';
-    case OperatorKind::Prefix: return 'p';
-    case OperatorKind::Postfix: return 'P';
-    }
-    unreachable("invalid");
-  }();
+  out << 'o' << mangleOperatorKind(operatorKind);
 
   // Mangle ASCII operators directly.
   out << ident.size();
@@ -119,9 +122,10 @@ static void mangleIdentifier(StringRef ident, OperatorKind operatorKind,
 void Demangle::mangleIdentifier(const char *data, size_t length,
                                 OperatorKind operatorKind,
                                 std::string &out, bool usePunycode) {
-  DemanglerPrinter printer(out);
-  return ::mangleIdentifier(StringRef(data, length), operatorKind,
-                            usePunycode, printer);
+  DemanglerPrinter printer;
+  ::mangleIdentifier(StringRef(data, length), operatorKind,
+                     usePunycode, printer);
+  out = std::move(printer).str();
 }
 
 namespace {
@@ -450,6 +454,16 @@ void Remangler::mangleGenericSpecialization(Node *node) {
   // Start another mangled name.
   Out << "__T";
 }
+void Remangler::mangleGenericSpecializationNotReAbstracted(Node *node) {
+  Out << "TSr";
+  mangleChildNodes(node); // GenericSpecializationParams
+
+  // Specializations are just prepended to already-mangled names.
+  resetSubstitutions();
+
+  // Start another mangled name.
+  Out << "__T";
+}
 void Remangler::mangleGenericSpecializationParam(Node *node) {
   // Should be a type followed by a series of protocol conformances.
   mangleChildNodes(node);
@@ -469,6 +483,10 @@ void Remangler::mangleFunctionSignatureSpecialization(Node *node) {
 
 void Remangler::mangleSpecializationPassID(Node *node) {
   Out << node->getIndex();
+}
+
+void Remangler::mangleSpecializationIsFragile(Node *node) {
+  Out << "q";
 }
 
 void Remangler::mangleFunctionSignatureSpecializationParam(Node *node) {
@@ -698,6 +716,17 @@ void Remangler::mangleProtocolWitnessTable(Node *node) {
   mangleSingleChildNode(node); // protocol conformance
 }
 
+void Remangler::mangleGenericProtocolWitnessTable(Node *node) {
+  Out << "WG";
+  mangleSingleChildNode(node); // protocol conformance
+}
+
+void Remangler::mangleGenericProtocolWitnessTableInstantiationFunction(
+                                                                  Node *node) {
+  Out << "WI";
+  mangleSingleChildNode(node); // protocol conformance
+}
+
 void Remangler::mangleProtocolWitnessTableAccessor(Node *node) {
   Out << "Wa";
   mangleSingleChildNode(node); // protocol conformance
@@ -713,14 +742,17 @@ void Remangler::mangleLazyProtocolWitnessTableCacheVariable(Node *node) {
   mangleChildNodes(node); // type, protocol conformance
 }
 
-void Remangler::mangleDependentProtocolWitnessTableGenerator(Node *node) {
-  Out << "WD";
-  mangleSingleChildNode(node); // protocol conformance
+void Remangler::mangleAssociatedTypeMetadataAccessor(Node *node) {
+  Out << "Wt";
+  mangleChildNodes(node); // protocol conformance, identifier
 }
 
-void Remangler::mangleDependentProtocolWitnessTableTemplate(Node *node) {
-  Out << "Wd";
-  mangleSingleChildNode(node); // protocol conformance
+void Remangler::mangleAssociatedTypeWitnessTableAccessor(Node *node) {
+  Out << "WT";
+  assert(node->getNumChildren() == 3);
+  mangleChildNode(node, 0); // protocol conformance
+  mangleChildNode(node, 1); // identifier
+  mangleProtocolWithoutPrefix(node->begin()[2].get()); // type
 }
 
 void Remangler::mangleReabstractionThunkHelper(Node *node) {
@@ -1160,6 +1192,11 @@ void Remangler::mangleErrorType(Node *node) {
   Out << "ERR";
 }
 
+void Remangler::mangleSILBoxType(Node *node) {
+  Out << 'X' << 'b';
+  mangleSingleChildNode(node);
+}
+
 void Remangler::mangleMetatype(Node *node) {
   if (node->getNumChildren() == 1) {
     Out << 'M';
@@ -1578,8 +1615,7 @@ void Remangler::mangleTypeList(Node *node) {
 std::string Demangle::mangleNode(const NodePointer &node) {
   if (!node) return "";
 
-  std::string str;
-  DemanglerPrinter printer(str);
+  DemanglerPrinter printer;
   Remangler(printer).mangle(node.get());
-  return str;
+  return std::move(printer).str();
 }

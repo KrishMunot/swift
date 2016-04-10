@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -143,22 +143,22 @@ extension double4x4 {
 
 // MARK: APIs refined for Swift
 
-@available(iOS, introduced=8.0)
-@available(OSX, introduced=10.8)
+@available(iOS, introduced: 8.0)
+@available(OSX, introduced: 10.8)
 extension SCNGeometryElement {
-  public convenience init<IndexType : IntegerType>(
+  public convenience init<IndexType : Integer>(
     indices: [IndexType], primitiveType: SCNGeometryPrimitiveType
   ) {
     let indexCount = indices.count
     let primitiveCount: Int
     switch primitiveType {
-    case .Triangles:
+    case .triangles:
       primitiveCount = indexCount / 3
-    case .TriangleStrip:
+    case .triangleStrip:
       primitiveCount = indexCount - 2
-    case .Line:
+    case .line:
       primitiveCount = indexCount / 2
-    case .Point:
+    case .point:
       primitiveCount = indexCount
     }
     self.init(
@@ -172,15 +172,15 @@ extension SCNGeometryElement {
 @warn_unused_result
 @_silgen_name("SCN_Swift_SCNSceneSource_entryWithIdentifier")
 internal func SCN_Swift_SCNSceneSource_entryWithIdentifier(
-  self_: AnyObject,
+  _ self_: AnyObject,
   _ uid: NSString,
   _ entryClass: AnyObject) -> AnyObject?
 
-@available(iOS, introduced=8.0)
-@available(OSX, introduced=10.8)
+@available(iOS, introduced: 8.0)
+@available(OSX, introduced: 10.8)
 extension SCNSceneSource {
   @warn_unused_result
-  public func entryWithIdentifier<T>(uid: String, withClass entryClass: T.Type) -> T? {
+  public func entryWithIdentifier<T>(_ uid: String, withClass entryClass: T.Type) -> T? {
     return SCN_Swift_SCNSceneSource_entryWithIdentifier(
       self, uid, entryClass as! AnyObject) as! T?
   }

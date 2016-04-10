@@ -1,8 +1,49 @@
-// RUN: %target-run-simple-swift | FileCheck %s
+// RUN: %target-run-simple-swift --stdlib-unittest-in-process | tee %t.txt
+// RUN: FileCheck %s < %t.txt
+// note: remove the --stdlib-unittest-in-process once all the FileCheck tests
+// have been converted to StdlibUnittest
 // REQUIRES: executable_test
 
-struct X : CollectionType {
-  typealias Element = String.CharacterView.Generator.Element
+import StdlibUnittest
+
+
+var CollectionTests = TestSuite("CollectionTests")
+
+/// An *iterator* that adapts a *collection* `C` and any *sequence* of
+/// its `Index` type to present the collection's elements in a
+/// permuted order.
+public struct PermutationGenerator<
+  C: Collection, Indices: Sequence
+  where
+  C.Index == Indices.Iterator.Element
+> : IteratorProtocol, Sequence {
+  var seq : C
+  var indices : Indices.Iterator
+
+  /// The type of element returned by `next()`.
+  public typealias Element = C.Iterator.Element
+
+  /// Advance to the next element and return it, or `nil` if no next
+  /// element exists.
+  ///
+  /// - Precondition: No preceding call to `self.next()` has returned `nil`.
+  public mutating func next() -> Element? {
+    let result = indices.next()
+    return result != nil ? seq[result!] : .none
+  }
+
+  /// Construct an *iterator* over a permutation of `elements` given
+  /// by `indices`.
+  ///
+  /// - Precondition: `elements[i]` is valid for every `i` in `indices`.
+  public init(elements: C, indices: Indices) {
+    self.seq = elements
+    self.indices = indices.makeIterator()
+  }
+}
+
+struct X : Collection {
+  typealias Element = String.CharacterView.Iterator.Element
   typealias Index = String.Index
   var msg: String
 
@@ -14,10 +55,6 @@ struct X : CollectionType {
     return msg.endIndex
   }
   subscript(i: Index) -> Element { return msg[i] }
-
-  func generate() -> IndexingGenerator<X> {
-    return IndexingGenerator(self)
-  }
 }
 
 var foobar = X("foobar")
@@ -32,7 +69,7 @@ print("")
 // <rdar://problem/15772601> Type checking failure
 // CHECK: raboof
 let i = foobar.indices
-let r = i.lazy.reverse()
+let r = i.lazy.reversed()
 for a in PermutationGenerator(elements: foobar, indices: r) {
   
   print(a, terminator: "")
@@ -40,15 +77,17 @@ for a in PermutationGenerator(elements: foobar, indices: r) {
 print("")
 
 func isPalindrome0<
-  S: CollectionType 
-    where S.Index: BidirectionalIndexType, S.Generator.Element: Equatable
->(seq: S) -> Bool {
+  S : Collection
+  where
+  S.Index : BidirectionalIndex,
+  S.Iterator.Element : Equatable
+>(_ seq: S) -> Bool {
   typealias Index = S.Index
 
-  var a = seq.indices
+  let a = seq.indices
   var i = seq.indices
-  var ir = i.lazy.reverse()
-  var b = ir.generate()
+  var ir = i.lazy.reversed()
+  var b = ir.makeIterator()
   for i in a {
     if seq[i] != seq[b.next()!] {
       return false
@@ -63,12 +102,14 @@ print(isPalindrome0(X("GoHangaSalamiImaLasagneHoG")))
 print(isPalindrome0(X("GoHangaSalamiimalaSagnaHoG")))
 
 func isPalindrome1<
-  S: CollectionType 
-  where S.Index: BidirectionalIndexType, S.Generator.Element: Equatable
->(seq: S) -> Bool {
+  S : Collection
+  where
+  S.Index : BidirectionalIndex,
+  S.Iterator.Element : Equatable
+>(_ seq: S) -> Bool {
 
   var a = PermutationGenerator(elements: seq, indices: seq.indices)
-  var b = seq.lazy.reverse().generate()
+  var b = seq.lazy.reversed().makeIterator()
   for nextChar in a {
     if nextChar != b.next()! {
       return false
@@ -78,11 +119,14 @@ func isPalindrome1<
 }
 
 func isPalindrome1_5<
-  S: CollectionType 
-  where S.Index: BidirectionalIndexType, S.Generator.Element == S.Generator.Element, S.Generator.Element: Equatable
->(seq: S) -> Bool {
+  S: Collection
+  where
+  S.Index: BidirectionalIndex,
+  S.Iterator.Element == S.Iterator.Element,
+  S.Iterator.Element: Equatable
+>(_ seq: S) -> Bool {
 
-  var b = seq.lazy.reverse().generate()
+  var b = seq.lazy.reversed().makeIterator()
   for nextChar in seq {
     if nextChar != b.next()! {
       return false
@@ -102,21 +146,25 @@ print(isPalindrome1_5(X("FleetoMeRemoteelF")))
 print(isPalindrome1_5(X("FleetoMeReMoteelF")))
 
 // Finally, one that actually uses indexing to do half as much work.
-// BidirectionalIndexType traversal finally pays off!
+// BidirectionalIndex traversal finally pays off!
 func isPalindrome2<
-  S: CollectionType 
-    where S.Index: BidirectionalIndexType, S.Generator.Element: Equatable
->(seq: S) -> Bool {
+  S: Collection
+  where
+  S.Index : BidirectionalIndex,
+  S.Iterator.Element: Equatable
+>(_ seq: S) -> Bool {
 
   var b = seq.startIndex, e = seq.endIndex
 
   while (b != e) {
-    if (b == --e) { 
+    e = e.predecessor()
+    if (b == e) {
       break
     }
-    if seq[b++] != seq[e] {
+    if seq[b] != seq[e] {
       return false
     }
+    b = b.successor()
   }
   return true
 }
@@ -134,16 +182,18 @@ print(isPalindrome2(X("ZerimarORamireZ")))
 print(isPalindrome2(X("Zerimar-O-ramireZ")))
 
 func isPalindrome4<
-  S: CollectionType 
-  where S.Index: BidirectionalIndexType, S.Generator.Element: Equatable
->(seq: S) -> Bool {
+  S: Collection
+  where
+  S.Index : BidirectionalIndex,
+  S.Iterator.Element : Equatable
+>(_ seq: S) -> Bool {
   typealias Index = S.Index
 
   var a = PermutationGenerator(elements: seq, indices: seq.indices)
   // FIXME: separate ri from the expression below pending
   // <rdar://problem/15772601> Type checking failure
   var i = seq.indices
-  let ri = i.lazy.reverse()
+  let ri = i.lazy.reversed()
   var b = PermutationGenerator(elements: seq, indices: ri)
   for nextChar in a {
     if nextChar != b.next()! {
@@ -168,23 +218,23 @@ func testCount() {
 }
 testCount()
 
-struct SequenceOnly<T: SequenceType> : SequenceType {
+struct SequenceOnly<T : Sequence> : Sequence {
   var base: T
-  func generate() -> T.Generator { return base.generate() }
+  func makeIterator() -> T.Iterator { return base.makeIterator() }
 }
 
-func testUnderestimateCount() {
-  // CHECK: testing underestimateCount
-  print("testing underestimateCount")
+func testUnderestimatedCount() {
+  // CHECK: testing underestimatedCount
+  print("testing underestimatedCount")
   // CHECK-NEXT: random access: 4
-  print("random access: \(array.underestimateCount())")
+  print("random access: \(array.underestimatedCount)")
   // CHECK-NEXT: bidirectional: 5
-  print("bidirectional: \(dict.underestimateCount())")
-  // CHECK-NEXT: SequenceType only: 0
+  print("bidirectional: \(dict.underestimatedCount)")
+  // CHECK-NEXT: Sequence only: 0
   let s = SequenceOnly(base: array)
-  print("SequenceType only: \(s.underestimateCount())")
+  print("Sequence only: \(s.underestimatedCount)")
 }
-testUnderestimateCount()
+testUnderestimatedCount()
 
 func testIsEmptyFirstLast() {
   // CHECK: testing isEmpty
@@ -200,5 +250,38 @@ func testIsEmptyFirstLast() {
 }
 testIsEmptyFirstLast()
 
+/// A `Collection` that vends just the default implementations for
+/// `CollectionType` methods.
+struct CollectionOnly<T: Collection> : Collection {
+  var base: T
+
+  var startIndex: T.Index {
+    return base.startIndex
+  }
+
+  var endIndex: T.Index {
+    return base.endIndex
+  }
+
+  func makeIterator() -> T.Iterator {
+    return base.makeIterator()
+  }
+
+  subscript(position: T.Index) -> T.Iterator.Element {
+    return base[position]
+  }
+}
+
 // CHECK: all done.
 print("all done.")
+
+CollectionTests.test("first/performance") {
+  // accessing `first` should not perform duplicate work on lazy collections
+  var log: [Int] = []
+  let col_ = (0..<10).lazy.filter({ log.append($0); return (2..<8).contains($0) })
+  let col = CollectionOnly(base: col_)
+  expectEqual(2, col.first)
+  expectEqual([0, 1, 2], log)
+}
+
+runAllTests()

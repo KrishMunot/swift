@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -16,6 +16,8 @@
 // XFAIL: linux
 
 import StdlibUnittest
+
+
 import Foundation
 
 // Check that `NonObjectiveCBase` can be subclassed and the subclass can be
@@ -63,11 +65,11 @@ struct CountAndCapacity {
 // However, only half of the element storage is actually used to store
 // elements, interleaved with garbage, as a simple way of catching
 // potential bugs.
-final class TestManagedBuffer<T> : ManagedBuffer<CountAndCapacity,T> {
-  class func create(capacity: Int) -> TestManagedBuffer {
-    let r = super.create(capacity) {
+final class TestManagedBuffer<T> : ManagedBuffer<CountAndCapacity, T> {
+  class func create(_ capacity: Int) -> TestManagedBuffer {
+    let r = super.create(minimumCapacity: capacity) {
       CountAndCapacity(
-        count: LifetimeTracked(0), capacity: $0.allocatedElementCount)
+        count: LifetimeTracked(0), capacity: $0.capacity)
     }
     return r as! TestManagedBuffer
   }
@@ -81,7 +83,7 @@ final class TestManagedBuffer<T> : ManagedBuffer<CountAndCapacity,T> {
     }
   }
   
-  var capacity: Int {
+  var myCapacity: Int {
     return value.capacity
   }
   
@@ -95,20 +97,20 @@ final class TestManagedBuffer<T> : ManagedBuffer<CountAndCapacity,T> {
     let count = self.count
     
     withUnsafeMutablePointerToElements {
-      (x: UnsafeMutablePointer<T>)->() in
-      for i in 0.stride(to: count, by: 2) {
-        (x + i).destroy()
+      (x: UnsafeMutablePointer<T>) -> () in
+      for i in stride(from: 0, to: count, by: 2) {
+        (x + i).deinitialize()
       }
     }
   }
   
-  func append(x: T) {
+  func append(_ x: T) {
     let count = self.count
-    precondition(count + 2 <= capacity)
+    precondition(count + 2 <= myCapacity)
     
     withUnsafeMutablePointerToElements {
-      (p: UnsafeMutablePointer<T>)->() in
-      (p + count).initialize(x)
+      (p: UnsafeMutablePointer<T>) -> () in
+      (p + count).initialize(with: x)
     }
     self.count = count + 2
   }
@@ -118,9 +120,9 @@ class MyBuffer<T> {
   typealias Manager = ManagedBufferPointer<CountAndCapacity, T>
   deinit {
     Manager(unsafeBufferObject: self).withUnsafeMutablePointers {
-      (pointerToValue, pointerToElements)->Void in
-      pointerToElements.destroy(self.count)
-      pointerToValue.destroy()
+      (pointerToValue, pointerToElements) -> Void in
+      pointerToElements.deinitialize(count: self.count)
+      pointerToValue.deinitialize()
     }
   }
 
@@ -135,17 +137,17 @@ class MyBuffer<T> {
 var tests = TestSuite("ManagedBuffer")
 
 tests.test("basic") {
-  if true {
+  do {
     let s = TestManagedBuffer<LifetimeTracked>.create(0)
     expectEqual(1, LifetimeTracked.instances)
   }
   
   expectEqual(0, LifetimeTracked.instances)
-  if true {
+  do {
     let s = TestManagedBuffer<LifetimeTracked>.create(10)
     expectEqual(0, s.count)
-    expectLE(10, s.capacity)
-    expectGE(12, s.capacity)  // allow some over-allocation but not too much
+    expectLE(10, s.myCapacity)
+    expectGE(12, s.myCapacity)  // allow some over-allocation but not too much
     
     expectEqual(1, LifetimeTracked.instances)
     for i in 1..<6 {
@@ -154,11 +156,11 @@ tests.test("basic") {
       expectEqual(i * 2, s.count)
       expectEqual(
         s.count,
-        s.withUnsafeMutablePointerToValue { $0.memory.count.value }
+        s.withUnsafeMutablePointerToValue { $0.pointee.count.value }
       )
       expectEqual(
         s.capacity,
-        s.withUnsafeMutablePointerToValue { $0.memory.capacity }
+        s.withUnsafeMutablePointerToValue { $0.pointee.capacity }
       )
       expectEqual(
         LifetimeTracked(i),
@@ -189,7 +191,7 @@ tests.test("ManagedBufferPointer/SizeValidation/MyBuffer") {
 tests.test("ManagedBufferPointer") {
   typealias Manager = ManagedBufferPointer<CountAndCapacity, LifetimeTracked>
 
-  if true {
+  do {
     var mgr = Manager(
       bufferClass: TestManagedBuffer<LifetimeTracked>.self,
       minimumCapacity: 10
@@ -238,7 +240,7 @@ tests.test("ManagedBufferPointer") {
     let s2 = mgr.buffer as! MyBuffer<LifetimeTracked>
     expectFalse(mgr.holdsUniqueReference())
     
-    let val = mgr.withUnsafeMutablePointerToValue { $0 }.memory
+    let val = mgr.withUnsafeMutablePointerToValue { $0 }.pointee
     expectEqual(val.count.value, 0)
     expectEqual(val.capacity, 99)
   }

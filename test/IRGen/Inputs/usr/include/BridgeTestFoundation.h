@@ -41,18 +41,12 @@ void setBar(NSString *s);
 @interface NSManagedObject: NSObject
 @end
 
-typedef struct NSZone NSZone;
-
-@protocol NSCopying
-- copyWithZone:(NSZone*)z;
-@end
-
 @interface NSData: NSObject <NSCopying>
 @end
 
 typedef struct __CGImage *CGImageRef;
 
-__attribute__((availability(macosx,introduced=10.10)))
+__attribute__((availability(macosx,introduced=10.51)))
 @interface NSUserNotificationAction : NSObject
 @end
 

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -13,7 +13,7 @@
 /// A stdlib-internal protocol modeled by the intrinsic pointer types,
 /// UnsafeMutablePointer, UnsafePointer, and
 /// AutoreleasingUnsafeMutablePointer.
-public protocol _PointerType {
+public protocol _Pointer {
   /// The underlying raw pointer value.
   var _rawValue: Builtin.RawPointer { get }
 
@@ -26,9 +26,9 @@ public protocol _PointerType {
 @warn_unused_result
 public // COMPILER_INTRINSIC
 func _convertPointerToPointerArgument<
-  FromPointer: _PointerType,
-  ToPointer: _PointerType
->(from: FromPointer) -> ToPointer {
+  FromPointer : _Pointer,
+  ToPointer : _Pointer
+>(_ from: FromPointer) -> ToPointer {
   return ToPointer(from._rawValue)
 }
 
@@ -37,8 +37,8 @@ func _convertPointerToPointerArgument<
 @warn_unused_result
 public // COMPILER_INTRINSIC
 func _convertInOutToPointerArgument<
-  ToPointer: _PointerType
->(from: Builtin.RawPointer) -> ToPointer {
+  ToPointer : _Pointer
+>(_ from: Builtin.RawPointer) -> ToPointer {
   return ToPointer(from)
 }
 
@@ -48,8 +48,8 @@ func _convertInOutToPointerArgument<
 public // COMPILER_INTRINSIC
 func _convertMutableArrayToPointerArgument<
   FromElement,
-  ToPointer: _PointerType
->(inout a: [FromElement]) -> (AnyObject?, ToPointer) {
+  ToPointer : _Pointer
+>(_ a: inout [FromElement]) -> (AnyObject?, ToPointer) {
   // TODO: Putting a canary at the end of the array in checked builds might
   // be a good idea
 
@@ -66,19 +66,18 @@ func _convertMutableArrayToPointerArgument<
 public // COMPILER_INTRINSIC
 func _convertConstArrayToPointerArgument<
   FromElement,
-  ToPointer: _PointerType
->(arr: [FromElement]) -> (AnyObject?, ToPointer) {
+  ToPointer : _Pointer
+>(_ arr: [FromElement]) -> (AnyObject?, ToPointer) {
   let (owner, raw) = arr._cPointerArgs()
   return (owner, ToPointer(raw))
 }
 
 /// Derive a UTF-8 pointer argument from a value string parameter.
-@_transparent
 @warn_unused_result
 public // COMPILER_INTRINSIC
 func _convertConstStringToUTF8PointerArgument<
-  ToPointer: _PointerType
->(str: String) -> (AnyObject?, ToPointer) {
+  ToPointer : _Pointer
+>(_ str: String) -> (AnyObject?, ToPointer) {
   // Convert the UTF-8 representation to a null-terminated array.
   var utf8 = Array(str.utf8)
   utf8.append(0)

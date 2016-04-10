@@ -15,23 +15,23 @@ var CanaryAssocObjectHandle: UInt8 = 0
 
 // Attach an associated object with a loud deinit so we can see that the
 // error died.
-func hangCanary(o: AnyObject) {
+func hangCanary(_ o: AnyObject) {
   objc_setAssociatedObject(o, &CanaryAssocObjectHandle, Canary(),
                            .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 }
 
 class FooLayer: CALayer {
   var black: CGColor
-  var white: CGColor = CGColorGetConstantColor(kCGColorWhite)!
+  var white: CGColor = CGColor.constantColorForName(kCGColorWhite)!
 
   override init() {
-    black = CGColorGetConstantColor(kCGColorBlack)!
+    black = CGColor.constantColorForName(kCGColorBlack)!
     super.init()
     hangCanary(self)
   }
 
   required init?(coder: NSCoder) {
-    black = coder.decodeObjectForKey("black") as! CGColor
+    black = coder.decodeObject(forKey: "black") as! CGColor
     super.init(coder: coder)
   }
 

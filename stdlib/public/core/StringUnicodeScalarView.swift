@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -28,30 +28,32 @@ public func <(
 
 extension String {
   /// A collection of [Unicode scalar values](http://www.unicode.org/glossary/#unicode_scalar_value) that
-  /// encode a `String` .
-  public struct UnicodeScalarView : CollectionType, _Reflectable,
-    CustomStringConvertible, CustomDebugStringConvertible {
-    init(_ _core: _StringCore) {
+  /// encodes a `String` value.
+  public struct UnicodeScalarView : Collection, CustomStringConvertible, CustomDebugStringConvertible {
+    internal init(_ _core: _StringCore) {
       self._core = _core
     }
 
-    struct _ScratchGenerator : GeneratorType {
+    internal struct _ScratchIterator : IteratorProtocol {
       var core: _StringCore
       var idx: Int
+      @_versioned
       init(_ core: _StringCore, _ pos: Int) {
         self.idx = pos
         self.core = core
       }
+      @inline(__always)
       mutating func next() -> UTF16.CodeUnit? {
         if idx == core.endIndex {
-          return .None
+          return nil
         }
-        return self.core[idx++]
+        defer { idx += 1 }
+        return self.core[idx]
       }
     }
 
     /// A position in a `String.UnicodeScalarView`.
-    public struct Index : BidirectionalIndexType, Comparable {
+    public struct Index : BidirectionalIndex, Comparable {
       public init(_ _position: Int, _ _core: _StringCore) {
         self._position = _position
         self._core = _core
@@ -59,10 +61,11 @@ extension String {
 
       /// Returns the next consecutive value after `self`.
       ///
-      /// - Requires: The next value is representable.
+      /// - Precondition: The next value is representable.
       @warn_unused_result
+      @inline(__always)
       public func successor() -> Index {
-        var scratch = _ScratchGenerator(_core, _position)
+        var scratch = _ScratchIterator(_core, _position)
         var decoder = UTF16()
         let (_, length) = decoder._decodeOne(&scratch)
         return Index(_position + length, _core)
@@ -70,14 +73,14 @@ extension String {
 
       /// Returns the previous consecutive value before `self`.
       ///
-      /// - Requires: The previous value is representable.
+      /// - Precondition: The previous value is representable.
       @warn_unused_result
       public func predecessor() -> Index {
-        var i = _position
-        let codeUnit = _core[--i]
+        var i = _position-1
+        let codeUnit = _core[i]
         if _slowPath((codeUnit >> 10) == 0b1101_11) {
           if i != 0 && (_core[i - 1] >> 10) == 0b1101_10 {
-            --i
+            i -= 1
           }
         }
         return Index(i, _core)
@@ -93,8 +96,8 @@ extension String {
         return Index(_core.endIndex, _core)
       }
 
-      var _position: Int
-      var _core: _StringCore
+      @_versioned internal var _position: Int
+      @_versioned internal var _core: _StringCore
     }
 
     /// The position of the first `UnicodeScalar` if the `String` is
@@ -114,23 +117,22 @@ extension String {
 
     /// Access the element at `position`.
     ///
-    /// - Requires: `position` is a valid position in `self` and
+    /// - Precondition: `position` is a valid position in `self` and
     ///   `position != endIndex`.
     public subscript(position: Index) -> UnicodeScalar {
-      var scratch = _ScratchGenerator(_core, position._position)
+      var scratch = _ScratchIterator(_core, position._position)
       var decoder = UTF16()
       switch decoder.decode(&scratch) {
-      case .Result(let us):
+      case .scalarValue(let us):
         return us
-      case .EmptyInput:
-        _sanityCheckFailure("can not subscript using an endIndex")
-      case .Error:
+      case .emptyInput:
+        _sanityCheckFailure("cannot subscript using an endIndex")
+      case .error:
         return UnicodeScalar(0xfffd)
       }
     }
 
-    /// Access the elements delimited by the given half-open range of
-    /// indices.
+    /// Access the contiguous subrange of elements enclosed by `bounds`.
     ///
     /// - Complexity: O(1) unless bridging from Objective-C requires an
     ///   O(N) conversion.
@@ -141,7 +143,7 @@ extension String {
 
     /// A type whose instances can produce the elements of this
     /// sequence, in order.
-    public struct Generator : GeneratorType {
+    public struct Iterator : IteratorProtocol {
       init(_ _base: _StringCore) {
         if _base.hasContiguousStorage {
             self._baseSet = true
@@ -149,24 +151,24 @@ extension String {
             self._ascii = true
             self._asciiBase = UnsafeBufferPointer<UInt8>(
               start: UnsafePointer(_base._baseAddress),
-              count: _base.count).generate()
+              count: _base.count).makeIterator()
           } else {
             self._ascii = false
             self._base = UnsafeBufferPointer<UInt16>(
               start: UnsafePointer(_base._baseAddress),
-              count: _base.count).generate()
+              count: _base.count).makeIterator()
           }
         } else {
           self._ascii = false
           self._baseSet = false
-          self._generator = _base.generate()
+          self._iterator = _base.makeIterator()
         }
       }
 
       /// Advance to the next element and return it, or `nil` if no next
       /// element exists.
       ///
-      /// - Requires: No preceding call to `self.next()` has returned
+      /// - Precondition: No preceding call to `self.next()` has returned
       ///   `nil`.
       public mutating func next() -> UnicodeScalar? {
         var result: UnicodeDecodingResult
@@ -174,46 +176,40 @@ extension String {
           if _ascii {
             switch self._asciiBase.next() {
             case let x?:
-              result = .Result(UnicodeScalar(x))
-            case .None:
-              result = .EmptyInput
+              result = .scalarValue(UnicodeScalar(x))
+            case nil:
+              result = .emptyInput
             }
           } else {
             result = _decoder.decode(&(self._base!))
           }
         } else {
-          result = _decoder.decode(&(self._generator!))
+          result = _decoder.decode(&(self._iterator!))
         }
         switch result {
-        case .Result(let us):
+        case .scalarValue(let us):
           return us
-        case .EmptyInput:
-          return .None
-        case .Error:
+        case .emptyInput:
+          return nil
+        case .error:
           return UnicodeScalar(0xfffd)
         }
       }
-      var _decoder: UTF16 = UTF16()
-      let _baseSet: Bool
-      let _ascii: Bool
-      var _asciiBase: UnsafeBufferPointerGenerator<UInt8>!
-      var _base: UnsafeBufferPointerGenerator<UInt16>!
-      var _generator: IndexingGenerator<_StringCore>!
+      internal var _decoder: UTF16 = UTF16()
+      internal let _baseSet: Bool
+      internal let _ascii: Bool
+      internal var _asciiBase: UnsafeBufferPointerIterator<UInt8>!
+      internal var _base: UnsafeBufferPointerIterator<UInt16>!
+      internal var _iterator: IndexingIterator<_StringCore>!
     }
 
-    /// Return a *generator* over the `UnicodeScalar`s that comprise
-    /// this *sequence*.
+    /// Returns an iterator over the `UnicodeScalar`s that comprise
+    /// this sequence.
     ///
     /// - Complexity: O(1).
     @warn_unused_result
-    public func generate() -> Generator {
-      return Generator(_core)
-    }
-
-    /// Returns a mirror that reflects `self`.
-    @warn_unused_result
-    public func _getMirror() -> _MirrorType {
-      return _UnicodeScalarViewMirror(self)
+    public func makeIterator() -> Iterator {
+      return Iterator(_core)
     }
 
     public var description: String {
@@ -224,7 +220,7 @@ extension String {
       return "StringUnicodeScalarView(\(self.description.debugDescription))"
     }
 
-    var _core: _StringCore
+    internal var _core: _StringCore
   }
 
   /// Construct the `String` corresponding to the given sequence of
@@ -250,7 +246,7 @@ extension String {
   }
 }
 
-extension String.UnicodeScalarView : RangeReplaceableCollectionType {
+extension String.UnicodeScalarView : RangeReplaceableCollection {
   /// Construct an empty instance.
   public init() {
     self = String.UnicodeScalarView(_StringCore())
@@ -258,38 +254,38 @@ extension String.UnicodeScalarView : RangeReplaceableCollectionType {
   /// Reserve enough space to store `n` ASCII characters.
   ///
   /// - Complexity: O(`n`).
-  public mutating func reserveCapacity(n: Int) {
+  public mutating func reserveCapacity(_ n: Int) {
     _core.reserveCapacity(n)
   }
   /// Append `x` to `self`.
   ///
   /// - Complexity: Amortized O(1).
-  public mutating func append(x: UnicodeScalar) {
+  public mutating func append(_ x: UnicodeScalar) {
     _core.append(x)
   }
   /// Append the elements of `newElements` to `self`.
   ///
   /// - Complexity: O(*length of result*).
-  public mutating func appendContentsOf<
-    S : SequenceType where S.Generator.Element == UnicodeScalar
-  >(newElements: S) {
-    _core.appendContentsOf(newElements.lazy.flatMap { $0.utf16 })
+  public mutating func append<
+    S : Sequence where S.Iterator.Element == UnicodeScalar
+  >(contentsOf newElements: S) {
+    _core.append(contentsOf: newElements.lazy.flatMap { $0.utf16 })
   }
-  /// Replace the given `subRange` of elements with `newElements`.
+  /// Replace the elements within `bounds` with `newElements`.
   ///
   /// Invalidates all indices with respect to `self`.
   ///
-  /// - Complexity: O(`subRange.count`) if `subRange.endIndex
+  /// - Complexity: O(`bounds.count`) if `bounds.endIndex
   ///   == self.endIndex` and `newElements.isEmpty`, O(N) otherwise.
-  public mutating func replaceRange<
-    C: CollectionType where C.Generator.Element == UnicodeScalar
+  public mutating func replaceSubrange<
+    C: Collection where C.Iterator.Element == UnicodeScalar
   >(
-    subRange: Range<Index>, with newElements: C
+    _ bounds: Range<Index>, with newElements: C
   ) {
-    let rawSubRange = subRange.startIndex._position
-      ..< subRange.endIndex._position
+    let rawSubRange = bounds.startIndex._position
+      ..< bounds.endIndex._position
     let lazyUTF16 = newElements.lazy.flatMap { $0.utf16 }
-    _core.replaceRange(rawSubRange, with: lazyUTF16)
+    _core.replaceSubrange(rawSubRange, with: lazyUTF16)
   }
 }
 
@@ -298,7 +294,7 @@ extension String.UnicodeScalarIndex {
   /// Construct the position in `unicodeScalars` that corresponds exactly to
   /// `utf16Index`. If no such position exists, the result is `nil`.
   ///
-  /// - Requires: `utf16Index` is an element of
+  /// - Precondition: `utf16Index` is an element of
   ///   `String(unicodeScalars).utf16.indices`.
   public init?(
     _ utf16Index: String.UTF16Index,
@@ -328,7 +324,7 @@ extension String.UnicodeScalarIndex {
   /// Construct the position in `unicodeScalars` that corresponds exactly to
   /// `utf8Index`. If no such position exists, the result is `nil`.
   ///
-  /// - Requires: `utf8Index` is an element of
+  /// - Precondition: `utf8Index` is an element of
   ///   `String(unicodeScalars).utf8.indices`.
   public init?(
     _ utf8Index: String.UTF8Index,
@@ -350,7 +346,7 @@ extension String.UnicodeScalarIndex {
   /// Construct the position in `unicodeScalars` that corresponds
   /// exactly to `characterIndex`.
   ///
-  /// - Requires: `characterIndex` is an element of
+  /// - Precondition: `characterIndex` is an element of
   ///   `String(unicodeScalars).indices`.
   public init(
     _ characterIndex: String.Index,
@@ -359,32 +355,33 @@ extension String.UnicodeScalarIndex {
     self.init(characterIndex._base._position, unicodeScalars._core)
   }
 
-  /// Return the position in `utf8` that corresponds exactly
+  /// Returns the position in `utf8` that corresponds exactly
   /// to `self`.
   ///
-  /// - Requires: `self` is an element of `String(utf8)!.indices`.
+  /// - Precondition: `self` is an element of `String(utf8)!.indices`.
   @warn_unused_result
-  public func samePositionIn(utf8: String.UTF8View) -> String.UTF8View.Index {
+  public func samePosition(in utf8: String.UTF8View) -> String.UTF8View.Index {
     return String.UTF8View.Index(self, within: utf8)
   }
 
-  /// Return the position in `utf16` that corresponds exactly
+  /// Returns the position in `utf16` that corresponds exactly
   /// to `self`.
   ///
-  /// - Requires: `self` is an element of `String(utf16)!.indices`.
+  /// - Precondition: `self` is an element of `String(utf16)!.indices`.
   @warn_unused_result
-  public func samePositionIn(
-    utf16: String.UTF16View
+  public func samePosition(
+    in utf16: String.UTF16View
   ) -> String.UTF16View.Index {
     return String.UTF16View.Index(self, within: utf16)
   }
 
-  /// Return the position in `characters` that corresponds exactly
+  /// Returns the position in `characters` that corresponds exactly
   /// to `self`, or if no such position exists, `nil`.
   ///
-  /// - Requires: `self` is an element of `characters.unicodeScalars.indices`.
+  /// - Precondition: `self` is an element of
+  ///   `characters.unicodeScalars.indices`.
   @warn_unused_result
-  public func samePositionIn(characters: String) -> String.Index? {
+  public func samePosition(in characters: String) -> String.Index? {
     return String.Index(self, within: characters)
   }
 
@@ -410,5 +407,19 @@ extension String.UnicodeScalarIndex {
       scalars[self].value)
 
     return segmenter.isBoundary(gcb0, gcb1)
+  }
+}
+
+// Reflection
+extension String.UnicodeScalarView : CustomReflectable {
+  /// Returns a mirror that reflects `self`.
+  public var customMirror: Mirror {
+    return Mirror(self, unlabeledChildren: self)
+  }
+}
+
+extension String.UnicodeScalarView : CustomPlaygroundQuickLookable {
+  public var customPlaygroundQuickLook: PlaygroundQuickLook {
+    return .text(description)
   }
 }

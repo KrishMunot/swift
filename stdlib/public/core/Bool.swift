@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// A value type whose instances are either `true` or `false`.
+@_fixed_layout
 public struct Bool {
   internal var _value: Builtin.Int1
 
@@ -23,6 +24,7 @@ public struct Bool {
     self._value = Builtin.trunc_Int8_Int1(zero._value)
   }
 
+  @_versioned
   @_transparent
   internal init(_ v: Builtin.Int1) { self._value = v }
 }
@@ -40,7 +42,7 @@ extension Bool : _BuiltinBooleanLiteralConvertible, BooleanLiteralConvertible {
   }
 }
 
-extension Bool : BooleanType {
+extension Bool : Boolean {
   @_transparent
   @warn_unused_result
   public func _getBuiltinLogicValue() -> Builtin.Int1 {
@@ -52,7 +54,7 @@ extension Bool : BooleanType {
 
   /// Construct an instance representing the same logical value as
   /// `value`.
-  public init<T : BooleanType>(_ value: T) {
+  public init<T : Boolean>(_ value: T) {
     self = value.boolValue
   }
 }
@@ -64,10 +66,10 @@ extension Bool : CustomStringConvertible {
   }
 }
 
-// This is a magic entrypoint known to the compiler.
+// This is a magic entry point known to the compiler.
 @_transparent
 public // COMPILER_INTRINSIC
-func _getBool(v: Builtin.Int1) -> Bool { return Bool(v) }
+func _getBool(_ v: Builtin.Int1) -> Bool { return Bool(v) }
 
 @_transparent
 extension Bool : Equatable, Hashable {
@@ -99,4 +101,3 @@ public prefix func !(a: Bool) -> Bool {
 public func ==(lhs: Bool, rhs: Bool) -> Bool {
   return Bool(Builtin.cmp_eq_Int1(lhs._value, rhs._value))
 }
-

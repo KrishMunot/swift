@@ -16,19 +16,19 @@ struct D {}
 protocol Runcible {}
 protocol Fungible {}
 
-func meta<T>(m: T.Type) {}
-func meta2<T>(m: T.Type, _ x: Int) {}
+func meta<T>(_ m: T.Type) {}
+func meta2<T>(_ m: T.Type, _ x: Int) {}
 
-func generic<T>(x: T) {}
+func generic<T>(_ x: T) {}
 
 var a, b, c, d : Int
 
 a < b
 (a < b, c > d)
 // Parses as generic because of lparen after '>'
-(a < b, c > (d)) // expected-error{{use of undeclared type 'b'}} expected-note{{while parsing this '<' as a type parameter bracket}}
+(a < b, c > (d)) // expected-error{{use of undeclared type 'b'}}
 // Parses as generic because of lparen after '>'
-(a<b, c>(d)) // expected-error{{use of undeclared type 'b'}} expected-note{{while parsing this '<' as a type parameter bracket}}
+(a<b, c>(d)) // expected-error{{use of undeclared type 'b'}} 
 a>(b)
 a > (b)
 

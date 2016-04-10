@@ -42,7 +42,7 @@ var subject_getterSetter: Int {
   }
 }
 
-var subject_global_observingAccesorsVar1: Int = 0 {
+var subject_global_observingAccessorsVar1: Int = 0 {
   @objc 
   willSet { // expected-error {{@objc can only be used with members of classes, @objc protocols, and concrete extensions of classes}} {{3-9=}}
   }
@@ -90,7 +90,7 @@ class subject_getterSetter1 {
 
 class subject_staticVar1 {
   @objc
-  class var staticVar1: Int = 42 // expected-error {{class stored properties not yet supported}}
+  class var staticVar1: Int = 42 // expected-error {{class stored properties not supported}}
 
   @objc
   class var staticVar2: Int { return 42 }
@@ -194,14 +194,31 @@ extension subject_genericClass {
 
 @objc
 enum subject_enum: Int {
-  @objc   // expected-error {{@objc cannot be applied to this declaration}} {{3-9=}}
+  @objc   // expected-error {{attribute has no effect; cases within an '@objc' enum are already exposed to Objective-C}} {{3-9=}}
   case subject_enumElement1
+
+  @objc(subject_enumElement2)
+  case subject_enumElement2
+
+  @objc(subject_enumElement3)
+  case subject_enumElement3, subject_enumElement4 // expected-error {{'@objc' enum case declaration defines multiple enum cases with the same Objective-C name}}{{3-8=}}
+
+  @objc   // expected-error {{attribute has no effect; cases within an '@objc' enum are already exposed to Objective-C}} {{3-9=}}
+  case subject_enumElement5, subject_enumElement6
+
+  @nonobjc // expected-error {{@nonobjc cannot be applied to this declaration}}
+  case subject_enumElement7
 
   @objc   
   init() {} // expected-error {{@objc can only be used with members of classes, @objc protocols, and concrete extensions of classes}} {{3-9=}}
 
   @objc
   func subject_instanceFunc() {} // expected-error {{@objc can only be used with members of classes, @objc protocols, and concrete extensions of classes}} {{3-8=}}
+}
+
+enum subject_enum2 {
+  @objc(subject_enum2Element1)
+  case subject_enumElement1 // expected-error{{'@objc' enum case is not allowed outside of an '@objc' enum}}{{3-8=}}
 }
 
 @objc
@@ -241,10 +258,6 @@ protocol subject_containerProtocol1 {
 
 @objc
 protocol subject_containerObjCProtocol1 {
-  func func_Curried1()() // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be a member of an @objc protocol because curried functions cannot be represented in Objective-C}}
-  // expected-note@-2 {{inferring '@objc' because the declaration is a member of an '@objc' protocol}}
-
   func func_FunctionReturn1() -> PlainStruct
   // expected-error@-1 {{method cannot be a member of an @objc protocol because its result type cannot be represented in Objective-C}}
   // expected-note@-2 {{Swift structs cannot be represented in Objective-C}}
@@ -672,37 +685,6 @@ class infer_instanceFunc1 {
 
   @objc func func_TupleStyle2a(a: Int, b: Int, c: Int) {}
 
-  func func_Curried1()() {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-// CHECK-LABEL: {{^}} func func_Curried1()() {
-
-  @objc func func_Curried1_()() {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be marked @objc because curried functions cannot be represented in Objective-C}}
-
-  func func_Curried2()(a: Int) {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-// CHECK-LABEL: {{^}} func func_Curried2()(a: Int) {
-
-  @objc func func_Curried2_()(a: Int) {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be marked @objc because curried functions cannot be represented in Objective-C}}
-
-  func func_Curried3()() -> Int {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-// CHECK-LABEL: {{^}} func func_Curried3()() -> Int {
-
-  @objc func func_Curried3_()() -> Int {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be marked @objc because curried functions cannot be represented in Objective-C}}
-
-  func func_Curried4()(a: String) {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-// CHECK-LABEL: {{^}} func func_Curried4()(a: String) {
-
-  @objc func func_Curried4_()(a: String) {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be marked @objc because curried functions cannot be represented in Objective-C}}
-
-  func func_Curried5()() -> String {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-// CHECK-LABEL: {{^}} func func_Curried5()() -> String {
-
-  @objc func func_Curried5_()() -> String {} // expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // expected-error@-1 {{method cannot be marked @objc because curried functions cannot be represented in Objective-C}}
-
-
   // Check that we produce diagnostics for every parameter and return type.
   @objc func func_MultipleDiags(a: PlainStruct, b: PlainEnum) -> protocol<> {}
   // expected-error@-1 {{method cannot be marked @objc because the type of the parameter 1 cannot be represented in Objective-C}}
@@ -804,16 +786,16 @@ class infer_instanceVar1 {
     // CHECK-NEXT: @objc set {}
   }
 
-  var observingAccesorsVar1: Int {
-  // CHECK: @objc var observingAccesorsVar1: Int {
+  var observingAccessorsVar1: Int {
+  // CHECK: @objc var observingAccessorsVar1: Int {
     willSet {}
     // CHECK-NEXT: {{^}} final willSet {}
     didSet {}
     // CHECK-NEXT: {{^}} final didSet {}
   }
 
-  @objc var observingAccesorsVar1_: Int {
-  // CHECK: {{^}} @objc var observingAccesorsVar1_: Int {
+  @objc var observingAccessorsVar1_: Int {
+  // CHECK: {{^}} @objc var observingAccessorsVar1_: Int {
     willSet {}
     // CHECK-NEXT: {{^}} final willSet {}
     didSet {}
@@ -889,8 +871,8 @@ class infer_instanceVar1 {
 // CHECK-LABEL: @objc var var_UInt32: UInt32
 // CHECK-LABEL: @objc var var_UInt64: UInt64
 
-  var var_COpaquePointer: COpaquePointer
-// CHECK-LABEL: @objc var var_COpaquePointer: COpaquePointer
+  var var_OpaquePointer: OpaquePointer
+// CHECK-LABEL: @objc var var_OpaquePointer: OpaquePointer
 
   var var_PlainClass: PlainClass
 // CHECK-LABEL: {{^}}  var var_PlainClass: PlainClass
@@ -1083,7 +1065,7 @@ class infer_instanceVar1 {
   var var_UnsafeMutablePointer4: UnsafeMutablePointer<String>
   var var_UnsafeMutablePointer5: UnsafeMutablePointer<Float>
   var var_UnsafeMutablePointer6: UnsafeMutablePointer<Double>
-  var var_UnsafeMutablePointer7: UnsafeMutablePointer<COpaquePointer>
+  var var_UnsafeMutablePointer7: UnsafeMutablePointer<OpaquePointer>
   var var_UnsafeMutablePointer8: UnsafeMutablePointer<PlainClass>
   var var_UnsafeMutablePointer9: UnsafeMutablePointer<PlainStruct>
   var var_UnsafeMutablePointer10: UnsafeMutablePointer<PlainEnum>
@@ -1099,13 +1081,13 @@ class infer_instanceVar1 {
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer4: UnsafeMutablePointer<String>
 // CHECK-LABEL: @objc var var_UnsafeMutablePointer5: UnsafeMutablePointer<Float>
 // CHECK-LABEL: @objc var var_UnsafeMutablePointer6: UnsafeMutablePointer<Double>
-// CHECK-LABEL: @objc var var_UnsafeMutablePointer7: UnsafeMutablePointer<COpaquePointer>
+// CHECK-LABEL: @objc var var_UnsafeMutablePointer7: UnsafeMutablePointer<OpaquePointer>
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer8: UnsafeMutablePointer<PlainClass>
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer9: UnsafeMutablePointer<PlainStruct>
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer10: UnsafeMutablePointer<PlainEnum>
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer11: UnsafeMutablePointer<PlainProtocol>
 // CHECK-LABEL: @objc var var_UnsafeMutablePointer12: UnsafeMutablePointer<AnyObject>
-// CHECK-LABEL: @objc var var_UnsafeMutablePointer13: UnsafeMutablePointer<AnyObject.Type>
+// CHECK-LABEL: var var_UnsafeMutablePointer13: UnsafeMutablePointer<AnyObject.Type>
 // CHECK-LABEL: {{^}} @objc var var_UnsafeMutablePointer100: UnsafeMutablePointer<()>
 // CHECK-LABEL: {{^}} @objc var var_UnsafeMutablePointer101: UnsafeMutablePointer<Void>
 // CHECK-LABEL: {{^}}  var var_UnsafeMutablePointer102: UnsafeMutablePointer<(Int, Int)>
@@ -1169,7 +1151,7 @@ class infer_instanceVar1 {
   var var_Optional_fail12: Int?
   var var_Optional_fail13: Bool?
   var var_Optional_fail14: CBool?
-  var var_Optional_fail16: COpaquePointer?
+  var var_Optional_fail16: OpaquePointer?
   var var_Optional_fail17: UnsafeMutablePointer<Int>?
   var var_Optional_fail18: UnsafeMutablePointer<Class_ObjC1>?
   var var_Optional_fail20: AnyObject??
@@ -1524,7 +1506,7 @@ class infer_instanceVar5 {
 class infer_staticVar1 {
 // CHECK-LABEL: @objc class infer_staticVar1 {
 
-  class var staticVar1: Int = 42 // expected-error {{class stored properties not yet supported}}
+  class var staticVar1: Int = 42 // expected-error {{class stored properties not supported}}
   // CHECK: @objc class var staticVar1: Int
 }
 
@@ -1534,7 +1516,7 @@ class infer_subscript1 {
 
   @objc
   subscript(i: Int) -> Int {
-  // CHECK: @objc subscript (i: Int) -> Int
+  // CHECK: @objc subscript(i: Int) -> Int
     get {}
     // CHECK: @objc get {}
     set {}
@@ -1580,50 +1562,30 @@ class infer_class5 : Protocol_ObjC1 {}
 
 protocol infer_protocol1 {
 // CHECK-LABEL: {{^}}protocol infer_protocol1 {
-
-  func func_Curried1()() // no-error expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // CHECK: {{^}} func func_Curried1()()
-
   func nonObjC1()
   // CHECK: {{^}} func nonObjC1()
 }
 
 protocol infer_protocol2 : Protocol_Class1 {
 // CHECK-LABEL: {{^}}protocol infer_protocol2 : Protocol_Class1 {
-
-  func func_Curried1()() // no-error expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // CHECK: {{^}} func func_Curried1()()
-
   func nonObjC1()
   // CHECK: {{^}} func nonObjC1()
 }
 
 protocol infer_protocol3 : Protocol_ObjC1 {
 // CHECK-LABEL: {{^}}protocol infer_protocol3 : Protocol_ObjC1 {
-
-  func func_Curried1()() // no-error expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // CHECK: {{^}} func func_Curried1()()
-
   func nonObjC1()
   // CHECK: {{^}} func nonObjC1()
 }
 
 protocol infer_protocol4 : Protocol_Class1, Protocol_ObjC1 {
 // CHECK-LABEL: {{^}}protocol infer_protocol4 : Protocol_Class1, Protocol_ObjC1 {
-
-  func func_Curried1()() // no-error expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // CHECK: {{^}} func func_Curried1()()
-
   func nonObjC1()
   // CHECK: {{^}} func nonObjC1()
 }
 
 protocol infer_protocol5 : Protocol_ObjC1, Protocol_Class1 {
 // CHECK-LABEL: {{^}}protocol infer_protocol5 : Protocol_ObjC1, Protocol_Class1 {
-
-  func func_Curried1()() // no-error expected-warning{{curried function declaration syntax will be removed in a future version of Swift}}
-  // CHECK: {{^}} func func_Curried1()()
-
   func nonObjC1()
   // CHECK: {{^}} func nonObjC1()
 }
@@ -1694,9 +1656,6 @@ class HasNSManaged {
 
   func mutableAutoreleasingUnsafeMutablePointerToAnyObject(p: AutoreleasingUnsafeMutablePointer<AnyObject>) {}
   // CHECK-LABEL: {{^}} @objc func mutableAutoreleasingUnsafeMutablePointerToAnyObject(p: AutoreleasingUnsafeMutablePointer<AnyObject>) {
-
-  func cFunctionPointer(p: CFunctionPointer<() -> ()>) {} // expected-error{{unavailable}}
-  // CHECK-LABEL: {{^}} func cFunctionPointer(p: <<error type>>) -> <<error type>>
 }
 
 // @objc with nullary names
@@ -1730,7 +1689,7 @@ extension PlainClass {
 
   // CHECK-LABEL: @objc(setWithRed:green:blue:alpha:) dynamic func set
   @objc(setWithRed:green:blue:alpha:)
-  func set(_: Float, green: Float, blue: Float, alpha: Float)  { }
+  func set(_: Float, green: Float, blue: Float, alpha: Float) { }
 
   // CHECK-LABEL: @objc(createWithRed:green:blue:alpha:) dynamic class func createWith
   @objc(createWithRed:green blue:alpha)
@@ -1748,6 +1707,15 @@ class BadClass1 { }
 
 @objc(Protocol:) // expected-error{{'@objc' protocol must have a simple name}}{{15-16=}}
 protocol BadProto1 { }
+
+@objc(Enum:) // expected-error{{'@objc' enum must have a simple name}}{{11-12=}}
+enum BadEnum1: Int { case X }
+
+@objc
+enum BadEnum2: Int {
+  @objc(X:)   // expected-error{{'@objc' enum case must have a simple name}}{{10-11=}}
+  case X
+}
 
 class BadClass2 {
   @objc(badprop:foo:wibble:) // expected-error{{'@objc' property must have a simple name}}{{16-28=}}
@@ -1809,7 +1777,7 @@ class Super {
   @objc(renamedFoo)
   var foo: Int { get { return 3 } } // expected-note 2{{overridden declaration is here}}
 
-  @objc func process(i: Int) -> Int { } // expected-note {{overriding '@objc' method 'process' here}}
+  @objc func process(i: Int) -> Int { } // expected-note {{overriding '@objc' method 'process(i:)' here}}
 }
 
 class Sub1 : Super {
@@ -1987,9 +1955,9 @@ class ClassThrows1 {
   // CHECK: {{^}} func methodReturnsOptionalObjCClass() throws -> Class_ObjC1?
   func methodReturnsOptionalObjCClass() throws -> Class_ObjC1? { return nil }
 
-  // CHECK: @objc func methodWithTrailingClosures(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int, fn3: (Int) -> Int)
+  // CHECK: @objc func methodWithTrailingClosures(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int, fn3: (Int) -> Int)
   // CHECK-DUMP: func_decl "methodWithTrailingClosures(_:fn1:fn2:fn3:)"{{.*}}foreign_error=ZeroResult,unowned,param=1,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
-  func methodWithTrailingClosures(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int, fn3: (Int) -> Int) throws { }
+  func methodWithTrailingClosures(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int, fn3: (Int) -> Int) throws { }
 
   // CHECK: @objc init(degrees: Double) throws
   // CHECK-DUMP: constructor_decl "init(degrees:)"{{.*}}foreign_error=NilResult,unowned,param=1,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>
@@ -1998,20 +1966,20 @@ class ClassThrows1 {
 
 // CHECK-DUMP-LABEL: class_decl "SubclassImplicitClassThrows1"
 @objc class SubclassImplicitClassThrows1 : ImplicitClassThrows1 {
-  // CHECK: @objc override func methodWithTrailingClosures(s: String, fn1: ((Int) -> Int), fn2: ((Int) -> Int), fn3: ((Int) -> Int))
+  // CHECK: @objc override func methodWithTrailingClosures(_ s: String, fn1: ((Int) -> Int), fn2: ((Int) -> Int), fn3: ((Int) -> Int))
   // CHECK-DUMP: func_decl "methodWithTrailingClosures(_:fn1:fn2:fn3:)"{{.*}}foreign_error=ZeroResult,unowned,param=1,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
-  override func methodWithTrailingClosures(s: String, fn1: ((Int) -> Int), fn2: ((Int) -> Int), fn3: ((Int) -> Int)) throws { }
+  override func methodWithTrailingClosures(_ s: String, fn1: ((Int) -> Int), fn2: ((Int) -> Int), fn3: ((Int) -> Int)) throws { }
 }
 
 class ThrowsRedecl1 {
-  @objc func method1(x: Int, error: Class_ObjC1) { } // expected-note{{declared here}}
-  @objc func method1(x: Int) throws { } // expected-error{{with Objective-C selector 'method1:error:'}}
+  @objc func method1(_ x: Int, error: Class_ObjC1) { } // expected-note{{declared here}}
+  @objc func method1(_ x: Int) throws { } // expected-error{{with Objective-C selector 'method1:error:'}}
 
-  @objc func method2AndReturnError(x: Int) { } // expected-note{{declared here}}
+  @objc func method2AndReturnError(_ x: Int) { } // expected-note{{declared here}}
   @objc func method2() throws { } // expected-error{{with Objective-C selector 'method2AndReturnError:'}}
 
-  @objc func method3(x: Int, error: Int, closure: Int -> Int) { }  // expected-note{{declared here}}
-  @objc func method3(x: Int, closure: Int -> Int) throws { } // expected-error{{with Objective-C selector 'method3:error:closure:'}}
+  @objc func method3(_ x: Int, error: Int, closure: Int -> Int) { }  // expected-note{{declared here}}
+  @objc func method3(_ x: Int, closure: Int -> Int) throws { } // expected-error{{with Objective-C selector 'method3:error:closure:'}}
 
   @objc(initAndReturnError:) func initMethod1(error: Int) { } // expected-note{{declared here}}
   @objc init() throws { } // expected-error{{with Objective-C selector 'initAndReturnError:'}}
@@ -2034,29 +2002,49 @@ class ThrowsObjCName {
 
   // CHECK-DUMP: func_decl "method8(_:fn1:fn2:)"{{.*}}foreign_error=ZeroResult,unowned,param=2,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
   @objc(method8:fn1:error:fn2:)
-  func method8(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
+  func method8(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
 
   // CHECK-DUMP: func_decl "method9(_:fn1:fn2:)"{{.*}}foreign_error=ZeroResult,unowned,param=0,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
   @objc(method9AndReturnError:s:fn1:fn2:)
-  func method9(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
+  func method9(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
 }
 
 class SubclassThrowsObjCName : ThrowsObjCName {
   // CHECK-DUMP: func_decl "method8(_:fn1:fn2:)"{{.*}}foreign_error=ZeroResult,unowned,param=2,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
-  override func method8(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
+  override func method8(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
 
   // CHECK-DUMP: func_decl "method9(_:fn1:fn2:)"{{.*}}foreign_error=ZeroResult,unowned,param=0,paramtype=AutoreleasingUnsafeMutablePointer<Optional<NSError>>,resulttype=Bool
-  override func method9(s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
+  override func method9(_ s: String, fn1: ((Int) -> Int), fn2: (Int) -> Int) throws { }
 }
 
 @objc protocol ProtocolThrowsObjCName {
-  optional func doThing(x: String) throws -> String // expected-note{{requirement 'doThing' declared here}}
+  optional func doThing(_ x: String) throws -> String // expected-note{{requirement 'doThing' declared here}}
 }
 
 class ConformsToProtocolThrowsObjCName1 : ProtocolThrowsObjCName {
-  @objc func doThing(x: String) throws -> String { return x } // okay
+  @objc func doThing(_ x: String) throws -> String { return x } // okay
 }
 
 class ConformsToProtocolThrowsObjCName2 : ProtocolThrowsObjCName { // expected-note{{class 'ConformsToProtocolThrowsObjCName2' declares conformance to protocol 'ProtocolThrowsObjCName' here}}
-  @objc func doThing(x: Int) throws -> String { return "" } // expected-error{{Objective-C method 'doThing:error:' provided by method 'doThing' conflicts with optional requirement method 'doThing' in protocol 'ProtocolThrowsObjCName'}}
+  @objc func doThing(_ x: Int) throws -> String { return "" } // expected-error{{Objective-C method 'doThing:error:' provided by method 'doThing' conflicts with optional requirement method 'doThing' in protocol 'ProtocolThrowsObjCName'}}
+}
+
+@objc class DictionaryTest {
+  // CHECK-LABEL: @objc func func_dictionary1a(x: Dictionary<ObjC_Class1, ObjC_Class1>)
+  func func_dictionary1a(x: Dictionary<ObjC_Class1, ObjC_Class1>) { }
+
+  // CHECK-LABEL: @objc func func_dictionary1b(x: Dictionary<ObjC_Class1, ObjC_Class1>)
+  @objc func func_dictionary1b(x: Dictionary<ObjC_Class1, ObjC_Class1>) { }
+
+  func func_dictionary2a(x: Dictionary<String, Int>) { }
+  @objc func func_dictionary2b(x: Dictionary<String, Int>) { }
+}
+
+
+@objc class ObjC_Class1 : Hashable { 
+  var hashValue: Int { return 0 }
+}
+
+func ==(lhs: ObjC_Class1, rhs: ObjC_Class1) -> Bool {
+  return true
 }

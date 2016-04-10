@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -37,24 +37,17 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <mutex>
 #include <unordered_map>
 #if SWIFT_OBJC_INTEROP
 # import <CoreFoundation/CFBase.h> // for CFTypeID
 # include <malloc/malloc.h>
 # include <dispatch/dispatch.h>
 #endif
-#if SWIFT_RUNTIME_ENABLE_DTRACE
-# include "SwiftRuntimeDTraceProbes.h"
-#else
-#define SWIFT_ISUNIQUELYREFERENCED()
-#define SWIFT_ISUNIQUELYREFERENCEDORPINNED()
-#endif
 
 using namespace swift;
 
 #if SWIFT_HAS_ISA_MASKING
-extern "C" __attribute__((weak_import))
+OBJC_EXPORT __attribute__((weak_import))
 const uintptr_t objc_debug_isa_class_mask;
 
 static uintptr_t computeISAMask() {
@@ -83,9 +76,12 @@ const ClassMetadata *swift::_swift_getClass(const void *object) {
 #if SWIFT_OBJC_INTEROP
 struct SwiftObject_s {
   void *isa  __attribute__((unavailable));
-  long refCount  __attribute__((unavailable));
+  uint32_t strongRefCount  __attribute__((unavailable));
+  uint32_t weakRefCount  __attribute__((unavailable));
 };
 
+static_assert(sizeof(SwiftObject_s) == sizeof(HeapObject),
+              "SwiftObject and HeapObject must have the same header");
 static_assert(std::is_trivially_constructible<SwiftObject_s>::value,
               "SwiftObject must be trivially constructible");
 static_assert(std::is_trivially_destructible<SwiftObject_s>::value,
@@ -94,14 +90,9 @@ static_assert(std::is_trivially_destructible<SwiftObject_s>::value,
 #if __has_attribute(objc_root_class)
 __attribute__((objc_root_class))
 #endif
+SWIFT_RUNTIME_EXPORT
 @interface SwiftObject<NSObject> {
-  // FIXME: rdar://problem/18950072 Clang emits ObjC++ classes as having
-  // non-trivial structors if they contain any struct fields at all, regardless of
-  // whether they in fact have nontrivial default constructors. Dupe the body
-  // of SwiftObject_s into here as a workaround because we don't want to pay
-  // the cost of .cxx_destruct method dispatch at deallocation time.
-  void *magic_isa  __attribute__((unavailable));
-  long magic_refCount  __attribute__((unavailable));
+  SwiftObject_s header;
 }
 
 - (BOOL)isEqual:(id)object;
@@ -238,13 +229,14 @@ static NSString *_getClassDescription(Class cls) {
 }
 
 - (struct _NSZone *)zone {
-  return (struct _NSZone *)
-    (malloc_zone_from_ptr(self) ?: malloc_default_zone());
+  auto zone = malloc_zone_from_ptr(self);
+  return (struct _NSZone *)(zone ? zone : malloc_default_zone());
 }
 
 - (void)doesNotRecognizeSelector: (SEL) sel {
   Class cls = (Class) _swift_getClassOfAllocated(self);
-  fatalError("Unrecognized selector %c[%s %s]\n", 
+  fatalError(/* flags = */ 0,
+             "Unrecognized selector %c[%s %s]\n",
              class_isMetaClass(cls) ? '+' : '-', 
              class_getName(cls), sel_getName(sel));
 }
@@ -451,7 +443,7 @@ bool swift::usesNativeSwiftReferenceCounting(const ClassMetadata *theClass) {
 
 // version for SwiftShims
 bool
-swift::_swift_usesNativeSwiftReferenceCounting_class(const void *theClass) {
+swift::swift_objc_class_usesNativeSwiftReferenceCounting(const void *theClass) {
 #if SWIFT_OBJC_INTEROP
   return usesNativeSwiftReferenceCounting((const ClassMetadata *)theClass);
 #else
@@ -476,10 +468,21 @@ static uintptr_t const objectPointerIsObjCBit = 0x00000002U;
 
 static bool usesNativeSwiftReferenceCounting_allocated(const void *object) {
   assert(!isObjCTaggedPointerOrNull(object));
+#if SWIFT_HAS_OPAQUE_ISAS
+  // Fast path for opaque ISAs.  We don't want to call _swift_getClassOfAllocated
+  // as that will call object_getClass.  Instead we can look at the bits in the
+  // ISA and tell if its a non-pointer opaque ISA which means it is definitely
+  // an ObjC object and doesn't use native swift reference counting.
+  if (_swift_isNonPointerIsaObjCClass(object))
+    return false;
+  return usesNativeSwiftReferenceCounting(_swift_getClassOfAllocatedFromPointer(object));
+#endif
   return usesNativeSwiftReferenceCounting(_swift_getClassOfAllocated(object));
 }
 
-void swift::swift_unknownRetain_n(void *object, int n) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_unknownRetain_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
   if (isObjCTaggedPointerOrNull(object)) return;
   if (usesNativeSwiftReferenceCounting_allocated(object)) {
     swift_retain_n(static_cast<HeapObject *>(object), n);
@@ -489,7 +492,9 @@ void swift::swift_unknownRetain_n(void *object, int n) {
     objc_retain(static_cast<id>(object));
 }
 
-void swift::swift_unknownRelease_n(void *object, int n) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_unknownRelease_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
   if (isObjCTaggedPointerOrNull(object)) return;
   if (usesNativeSwiftReferenceCounting_allocated(object))
     return swift_release_n(static_cast<HeapObject *>(object), n);
@@ -497,7 +502,9 @@ void swift::swift_unknownRelease_n(void *object, int n) {
     objc_release(static_cast<id>(object));
 }
 
-void swift::swift_unknownRetain(void *object) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_unknownRetain(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
   if (isObjCTaggedPointerOrNull(object)) return;
   if (usesNativeSwiftReferenceCounting_allocated(object)) {
     swift_retain(static_cast<HeapObject *>(object));
@@ -506,17 +513,62 @@ void swift::swift_unknownRetain(void *object) {
   objc_retain(static_cast<id>(object));
 }
 
-void swift::swift_unknownRelease(void *object) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_unknownRelease(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
   if (isObjCTaggedPointerOrNull(object)) return;
   if (usesNativeSwiftReferenceCounting_allocated(object))
-    return swift_release(static_cast<HeapObject *>(object));
+    return SWIFT_RT_ENTRY_CALL(swift_release)(static_cast<HeapObject *>(object));
   return objc_release(static_cast<id>(object));
 }
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_unknownRetain_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
+  if (isObjCTaggedPointerOrNull(object)) return;
+  if (usesNativeSwiftReferenceCounting_allocated(object)) {
+    swift_nonatomic_retain_n(static_cast<HeapObject *>(object), n);
+    return;
+  }
+  for (int i = 0; i < n; ++i)
+    objc_retain(static_cast<id>(object));
+}
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_unknownRelease_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
+  if (isObjCTaggedPointerOrNull(object)) return;
+  if (usesNativeSwiftReferenceCounting_allocated(object))
+    return swift_nonatomic_release_n(static_cast<HeapObject *>(object), n);
+  for (int i = 0; i < n; ++i)
+    objc_release(static_cast<id>(object));
+}
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_unknownRetain(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
+  if (isObjCTaggedPointerOrNull(object)) return;
+  if (usesNativeSwiftReferenceCounting_allocated(object)) {
+    swift_nonatomic_retain(static_cast<HeapObject *>(object));
+    return;
+  }
+  objc_retain(static_cast<id>(object));
+}
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_unknownRelease(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
+  if (isObjCTaggedPointerOrNull(object)) return;
+  if (usesNativeSwiftReferenceCounting_allocated(object))
+    return SWIFT_RT_ENTRY_CALL(swift_release)(static_cast<HeapObject *>(object));
+  return objc_release(static_cast<id>(object));
+}
+
 
 /// Return true iff the given BridgeObject is not known to use native
 /// reference-counting.
 ///
-/// Requires: object does not encode a tagged pointer
+/// Precondition: object does not encode a tagged pointer
 static bool isNonNative_unTagged_bridgeObject(void *object) {
   static_assert((heap_object_abi::SwiftSpareBitsMask & objectPointerIsObjCBit) ==
                 objectPointerIsObjCBit,
@@ -528,12 +580,14 @@ static bool isNonNative_unTagged_bridgeObject(void *object) {
 // Mask out the spare bits in a bridgeObject, returning the object it
 // encodes.
 ///
-/// Requires: object does not encode a tagged pointer
+/// Precondition: object does not encode a tagged pointer
 static void* toPlainObject_unTagged_bridgeObject(void *object) {
   return (void*)(uintptr_t(object) & ~unTaggedNonNativeBridgeObjectBits);
 }
 
-void *swift::swift_bridgeObjectRetain(void *object) {
+SWIFT_RUNTIME_EXPORT
+void *swift::swift_bridgeObjectRetain(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
 #if SWIFT_OBJC_INTEROP
   if (isObjCTaggedPointer(object))
     return object;
@@ -553,7 +607,31 @@ void *swift::swift_bridgeObjectRetain(void *object) {
 #endif
 }
 
-void swift::swift_bridgeObjectRelease(void *object) {
+SWIFT_RUNTIME_EXPORT
+void *swift::swift_nonatomic_bridgeObjectRetain(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
+#if SWIFT_OBJC_INTEROP
+  if (isObjCTaggedPointer(object))
+    return object;
+#endif
+
+  auto const objectRef = toPlainObject_unTagged_bridgeObject(object);
+
+#if SWIFT_OBJC_INTEROP
+  if (!isNonNative_unTagged_bridgeObject(object)) {
+    swift_nonatomic_retain(static_cast<HeapObject *>(objectRef));
+    return static_cast<HeapObject *>(objectRef);
+  }
+  return objc_retain(static_cast<id>(objectRef));
+#else
+  swift_nonatomic_retain(static_cast<HeapObject *>(objectRef));
+  return static_cast<HeapObject *>(objectRef);
+#endif
+}
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_bridgeObjectRelease(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
 #if SWIFT_OBJC_INTEROP
   if (isObjCTaggedPointer(object))
     return;
@@ -570,7 +648,28 @@ void swift::swift_bridgeObjectRelease(void *object) {
 #endif
 }
 
-void *swift::swift_bridgeObjectRetain_n(void *object, int n) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_bridgeObjectRelease(void *object)
+    SWIFT_CC(DefaultCC_IMPL) {
+#if SWIFT_OBJC_INTEROP
+  if (isObjCTaggedPointer(object))
+    return;
+#endif
+
+  auto const objectRef = toPlainObject_unTagged_bridgeObject(object);
+
+#if SWIFT_OBJC_INTEROP
+  if (!isNonNative_unTagged_bridgeObject(object))
+    return swift_nonatomic_release(static_cast<HeapObject *>(objectRef));
+  return objc_release(static_cast<id>(objectRef));
+#else
+  swift_nonatomic_release(static_cast<HeapObject *>(objectRef));
+#endif
+}
+
+SWIFT_RUNTIME_EXPORT
+void *swift::swift_bridgeObjectRetain_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
 #if SWIFT_OBJC_INTEROP
   if (isObjCTaggedPointer(object))
     return object;
@@ -593,7 +692,9 @@ void *swift::swift_bridgeObjectRetain_n(void *object, int n) {
 #endif
 }
 
-void swift::swift_bridgeObjectRelease_n(void *object, int n) {
+SWIFT_RUNTIME_EXPORT
+void swift::swift_bridgeObjectRelease_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
 #if SWIFT_OBJC_INTEROP
   if (isObjCTaggedPointer(object))
     return;
@@ -608,6 +709,51 @@ void swift::swift_bridgeObjectRelease_n(void *object, int n) {
     objc_release(static_cast<id>(objectRef));
 #else
   swift_release_n(static_cast<HeapObject *>(objectRef), n);
+#endif
+}
+
+SWIFT_RUNTIME_EXPORT
+void *swift::swift_nonatomic_bridgeObjectRetain_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
+#if SWIFT_OBJC_INTEROP
+  if (isObjCTaggedPointer(object))
+    return object;
+#endif
+
+  auto const objectRef = toPlainObject_unTagged_bridgeObject(object);
+
+#if SWIFT_OBJC_INTEROP
+  void *objc_ret = nullptr;
+  if (!isNonNative_unTagged_bridgeObject(object)) {
+    swift_nonatomic_retain_n(static_cast<HeapObject *>(objectRef), n);
+    return static_cast<HeapObject *>(objectRef);
+  }
+  for (int i = 0;i < n; ++i)
+    objc_ret = objc_retain(static_cast<id>(objectRef));
+  return objc_ret;
+#else
+  swift_nonatomic_retain_n(static_cast<HeapObject *>(objectRef), n);
+  return static_cast<HeapObject *>(objectRef);
+#endif
+}
+
+SWIFT_RUNTIME_EXPORT
+void swift::swift_nonatomic_bridgeObjectRelease_n(void *object, int n)
+    SWIFT_CC(DefaultCC_IMPL) {
+#if SWIFT_OBJC_INTEROP
+  if (isObjCTaggedPointer(object))
+    return;
+#endif
+
+  auto const objectRef = toPlainObject_unTagged_bridgeObject(object);
+
+#if SWIFT_OBJC_INTEROP
+  if (!isNonNative_unTagged_bridgeObject(object))
+    return swift_nonatomic_release_n(static_cast<HeapObject *>(objectRef), n);
+  for (int i = 0; i < n; ++i)
+    objc_release(static_cast<id>(objectRef));
+#else
+  swift_nonatomic_release_n(static_cast<HeapObject *>(objectRef), n);
 #endif
 }
 
@@ -978,6 +1124,7 @@ void swift::swift_unknownWeakTakeAssign(WeakReference *dest, WeakReference *src)
 /*****************************************************************************/
 /******************************* DYNAMIC CASTS *******************************/
 /*****************************************************************************/
+
 #if SWIFT_OBJC_INTEROP
 const void *
 swift::swift_dynamicCastObjCClass(const void *object,
@@ -1024,21 +1171,18 @@ swift::swift_dynamicCastForeignClassUnconditional(
   return object;
 }
 
-extern "C" bool swift_objcRespondsToSelector(id object, SEL selector) {
-  return [object respondsToSelector:selector];
-}
-
-extern "C" bool swift::_swift_objectConformsToObjCProtocol(const void *theObject,
-                                           const ProtocolDescriptor *protocol) {
+bool swift::objectConformsToObjCProtocol(const void *theObject,
+                                         const ProtocolDescriptor *protocol) {
   return [((id) theObject) conformsToProtocol: (Protocol*) protocol];
 }
 
 
-extern "C" bool swift::_swift_classConformsToObjCProtocol(const void *theClass,
-                                           const ProtocolDescriptor *protocol) {
+bool swift::classConformsToObjCProtocol(const void *theClass,
+                                        const ProtocolDescriptor *protocol) {
   return [((Class) theClass) conformsToProtocol: (Protocol*) protocol];
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" const Metadata *swift_dynamicCastTypeToObjCProtocolUnconditional(
                                                  const Metadata *type,
                                                  size_t numProtocols,
@@ -1087,6 +1231,7 @@ extern "C" const Metadata *swift_dynamicCastTypeToObjCProtocolUnconditional(
   return type;
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" const Metadata *swift_dynamicCastTypeToObjCProtocolConditional(
                                                 const Metadata *type,
                                                 size_t numProtocols,
@@ -1133,6 +1278,7 @@ extern "C" const Metadata *swift_dynamicCastTypeToObjCProtocolConditional(
   return type;
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" id swift_dynamicCastObjCProtocolUnconditional(id object,
                                                  size_t numProtocols,
                                                  Protocol * const *protocols) {
@@ -1147,6 +1293,7 @@ extern "C" id swift_dynamicCastObjCProtocolUnconditional(id object,
   return object;
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" id swift_dynamicCastObjCProtocolConditional(id object,
                                                  size_t numProtocols,
                                                  Protocol * const *protocols) {
@@ -1159,7 +1306,7 @@ extern "C" id swift_dynamicCastObjCProtocolConditional(id object,
   return object;
 }
 
-extern "C" void swift::swift_instantiateObjCClass(const ClassMetadata *_c) {
+void swift::swift_instantiateObjCClass(const ClassMetadata *_c) {
   static const objc_image_info ImageInfo = {0, 0};
 
   // Ensure the superclass is realized.
@@ -1173,9 +1320,11 @@ extern "C" void swift::swift_instantiateObjCClass(const ClassMetadata *_c) {
   (void)registered;
 }
 
-extern "C" Class swift_getInitializedObjCClass(Class c) {
+SWIFT_RT_ENTRY_VISIBILITY
+extern "C" Class swift_getInitializedObjCClass(Class c)
+    SWIFT_CC(RegisterPreservingCC_IMPL) {
   // Used when we have class metadata and we want to ensure a class has been
-  // initialized by the Objective C runtime. We need to do this because the
+  // initialized by the Objective-C runtime. We need to do this because the
   // class "c" might be valid metadata, but it hasn't been initialized yet.
   return [c class];
 }
@@ -1197,246 +1346,6 @@ swift::swift_dynamicCastObjCClassMetatypeUnconditional(
 
   swift_dynamicCastFailure(source, dest);
 }
-
-static Demangle::NodePointer _buildDemanglingForMetadata(const Metadata *type);
-
-// Build a demangled type tree for a nominal type.
-static Demangle::NodePointer
-_buildDemanglingForNominalType(Demangle::Node::Kind boundGenericKind,
-                               const Metadata *type,
-                               const NominalTypeDescriptor *description) {
-  using namespace Demangle;
-  
-  // Demangle the base name.
-  auto node = demangleTypeAsNode(description->Name,
-                                     strlen(description->Name));
-  // If generic, demangle the type parameters.
-  if (description->GenericParams.NumPrimaryParams > 0) {
-    auto typeParams = NodeFactory::create(Node::Kind::TypeList);
-    auto typeBytes = reinterpret_cast<const char *>(type);
-    auto genericParam = reinterpret_cast<const Metadata * const *>(
-                 typeBytes + sizeof(void*) * description->GenericParams.Offset);
-    for (unsigned i = 0, e = description->GenericParams.NumPrimaryParams;
-         i < e; ++i, ++genericParam) {
-      typeParams->addChild(_buildDemanglingForMetadata(*genericParam));
-    }
-
-    auto genericNode = NodeFactory::create(boundGenericKind);
-    genericNode->addChild(node);
-    genericNode->addChild(typeParams);
-    return genericNode;
-  }
-  return node;
-}
-
-// Build a demangled type tree for a type.
-static Demangle::NodePointer _buildDemanglingForMetadata(const Metadata *type) {
-  using namespace Demangle;
-
-  switch (type->getKind()) {
-  case MetadataKind::Class: {
-    auto classType = static_cast<const ClassMetadata *>(type);
-    return _buildDemanglingForNominalType(Node::Kind::BoundGenericClass,
-                                          type, classType->getDescription());
-  }
-  case MetadataKind::Enum:
-  case MetadataKind::Optional: {
-    auto structType = static_cast<const EnumMetadata *>(type);
-    return _buildDemanglingForNominalType(Node::Kind::BoundGenericEnum,
-                                          type, structType->Description);
-  }
-  case MetadataKind::Struct: {
-    auto structType = static_cast<const StructMetadata *>(type);
-    return _buildDemanglingForNominalType(Node::Kind::BoundGenericStructure,
-                                          type, structType->Description);
-  }
-  case MetadataKind::ObjCClassWrapper: {
-#if SWIFT_OBJC_INTEROP
-    auto objcWrapper = static_cast<const ObjCClassWrapperMetadata *>(type);
-    const char *className = class_getName((Class)objcWrapper->Class);
-    
-    // ObjC classes mangle as being in the magic "__ObjC" module.
-    auto module = NodeFactory::create(Node::Kind::Module, "__ObjC");
-    
-    auto node = NodeFactory::create(Node::Kind::Class);
-    node->addChild(module);
-    node->addChild(NodeFactory::create(Node::Kind::Identifier,
-                                       llvm::StringRef(className)));
-    
-    return node;
-#else
-    assert(false && "no ObjC interop");
-    return nullptr;
-#endif
-  }
-  case MetadataKind::ForeignClass: {
-    auto foreign = static_cast<const ForeignClassMetadata *>(type);
-    return Demangle::demangleTypeAsNode(foreign->getName(),
-                                        strlen(foreign->getName()));
-  }
-  case MetadataKind::Existential: {
-    auto exis = static_cast<const ExistentialTypeMetadata *>(type);
-    NodePointer proto_list = NodeFactory::create(Node::Kind::ProtocolList);
-    NodePointer type_list = NodeFactory::create(Node::Kind::TypeList);
-
-    proto_list->addChild(type_list);
-    
-    std::vector<const ProtocolDescriptor *> protocols;
-    protocols.reserve(exis->Protocols.NumProtocols);
-    for (unsigned i = 0, e = exis->Protocols.NumProtocols; i < e; ++i)
-      protocols.push_back(exis->Protocols[i]);
-    
-    // Sort the protocols by their mangled names.
-    // The ordering in the existential type metadata is by metadata pointer,
-    // which isn't necessarily stable across invocations.
-    std::sort(protocols.begin(), protocols.end(),
-          [](const ProtocolDescriptor *a, const ProtocolDescriptor *b) -> bool {
-            return strcmp(a->Name, b->Name) < 0;
-          });
-    
-    for (auto *protocol : protocols) {
-      // The protocol name is mangled as a type symbol, with the _Tt prefix.
-      auto protocolNode = demangleSymbolAsNode(protocol->Name,
-                                               strlen(protocol->Name));
-      
-      // ObjC protocol names aren't mangled.
-      if (!protocolNode) {
-        auto module = NodeFactory::create(Node::Kind::Module,
-                                          MANGLING_MODULE_OBJC);
-        auto node = NodeFactory::create(Node::Kind::Protocol);
-        node->addChild(module);
-        node->addChild(NodeFactory::create(Node::Kind::Identifier,
-                                           llvm::StringRef(protocol->Name)));
-        auto typeNode = NodeFactory::create(Node::Kind::Type);
-        typeNode->addChild(node);
-        type_list->addChild(typeNode);
-        continue;
-      }
-
-      // FIXME: We have to dig through a ridiculous number of nodes to get
-      // to the Protocol node here.
-      protocolNode = protocolNode->getChild(0); // Global -> TypeMangling
-      protocolNode = protocolNode->getChild(0); // TypeMangling -> Type
-      protocolNode = protocolNode->getChild(0); // Type -> ProtocolList
-      protocolNode = protocolNode->getChild(0); // ProtocolList -> TypeList
-      protocolNode = protocolNode->getChild(0); // TypeList -> Type
-      
-      assert(protocolNode->getKind() == Node::Kind::Type);
-      assert(protocolNode->getChild(0)->getKind() == Node::Kind::Protocol);
-      type_list->addChild(protocolNode);
-    }
-    
-    return proto_list;
-  }
-  case MetadataKind::ExistentialMetatype: {
-    auto metatype = static_cast<const ExistentialMetatypeMetadata *>(type);
-    auto instance = _buildDemanglingForMetadata(metatype->InstanceType);
-    auto node = NodeFactory::create(Node::Kind::ExistentialMetatype);
-    node->addChild(instance);
-    return node;
-  }
-  case MetadataKind::Function: {
-    auto func = static_cast<const FunctionTypeMetadata *>(type);
-
-    Node::Kind kind;
-    switch (func->getConvention()) {
-    case FunctionMetadataConvention::Swift:
-      kind = Node::Kind::FunctionType;
-      break;
-    case FunctionMetadataConvention::Block:
-      kind = Node::Kind::ObjCBlock;
-      break;
-    case FunctionMetadataConvention::CFunctionPointer:
-      kind = Node::Kind::CFunctionPointer;
-      break;
-    case FunctionMetadataConvention::Thin:
-      kind = Node::Kind::ThinFunctionType;
-      break;
-    }
-    
-    std::vector<NodePointer> inputs;
-    for (unsigned i = 0, e = func->getNumArguments(); i < e; ++i) {
-      auto arg = func->getArguments()[i];
-      auto input = _buildDemanglingForMetadata(arg.getPointer());
-      if (arg.getFlag()) {
-        NodePointer inout = NodeFactory::create(Node::Kind::InOut);
-        inout->addChild(input);
-        input = inout;
-      }
-      inputs.push_back(input);
-    }
-
-    NodePointer totalInput;
-    if (inputs.size() > 1) {
-      auto tuple = NodeFactory::create(Node::Kind::NonVariadicTuple);
-      for (auto &input : inputs)
-        tuple->addChild(input);
-      totalInput = tuple;
-    } else {
-      totalInput = inputs.front();
-    }
-    
-    NodePointer args = NodeFactory::create(Node::Kind::ArgumentTuple);
-    args->addChild(totalInput);
-    
-    NodePointer resultTy = _buildDemanglingForMetadata(func->ResultType);
-    NodePointer result = NodeFactory::create(Node::Kind::ReturnType);
-    result->addChild(resultTy);
-    
-    auto funcNode = NodeFactory::create(kind);
-    if (func->throws())
-      funcNode->addChild(NodeFactory::create(Node::Kind::ThrowsAnnotation));
-    funcNode->addChild(args);
-    funcNode->addChild(result);
-    return funcNode;
-  }
-  case MetadataKind::Metatype: {
-    auto metatype = static_cast<const MetatypeMetadata *>(type);
-    auto instance = _buildDemanglingForMetadata(metatype->InstanceType);
-    auto node = NodeFactory::create(Node::Kind::Metatype);
-    node->addChild(instance);
-    return node;
-  }
-  case MetadataKind::Tuple: {
-    auto tuple = static_cast<const TupleTypeMetadata *>(type);
-    auto tupleNode = NodeFactory::create(Node::Kind::NonVariadicTuple);
-    for (unsigned i = 0, e = tuple->NumElements; i < e; ++i) {
-      auto elt = _buildDemanglingForMetadata(tuple->getElement(i).Type);
-      tupleNode->addChild(elt);
-    }
-    return tupleNode;
-  }
-  case MetadataKind::Opaque:
-    // FIXME: Some opaque types do have manglings, but we don't have enough info
-    // to figure them out.
-  case MetadataKind::HeapLocalVariable:
-  case MetadataKind::HeapGenericLocalVariable:
-  case MetadataKind::ErrorObject:
-    break;
-  }
-  // Not a type.
-  return nullptr;
-}
-
-extern "C" const char *
-swift_getGenericClassObjCName(const ClassMetadata *clas) {
-  // Use the remangler to generate a mangled name from the type metadata.
-  auto demangling = _buildDemanglingForMetadata(clas);
-
-  // Remangle that into a new type mangling string.
-  auto typeNode
-    = Demangle::NodeFactory::create(Demangle::Node::Kind::TypeMangling);
-  typeNode->addChild(demangling);
-  auto globalNode
-    = Demangle::NodeFactory::create(Demangle::Node::Kind::Global);
-  globalNode->addChild(typeNode);
-  
-  auto string = Demangle::mangleNode(globalNode);
-  
-  auto fullNameBuf = (char*)swift_slowAlloc(string.size() + 1, 0);
-  memcpy(fullNameBuf, string.c_str(), string.size() + 1);
-  return fullNameBuf;
-}
 #endif
 
 const ClassMetadata *
@@ -1457,41 +1366,39 @@ swift::swift_dynamicCastForeignClassMetatypeUnconditional(
   return sourceType;
 }
 
+#if SWIFT_OBJC_INTEROP
 // Given a non-nil object reference, return true iff the object uses
 // native swift reference counting.
-bool swift::_swift_usesNativeSwiftReferenceCounting_nonNull(
+static bool usesNativeSwiftReferenceCounting_nonNull(
   const void* object
 ) {
-    assert(object != nullptr);
-#if SWIFT_OBJC_INTEROP
-    return !isObjCTaggedPointer(object) &&
-      usesNativeSwiftReferenceCounting_allocated(object);
-#else 
-    return true;
-#endif 
+  assert(object != nullptr);
+  return !isObjCTaggedPointer(object) &&
+    usesNativeSwiftReferenceCounting_allocated(object);
 }
+#endif 
 
+SWIFT_RT_ENTRY_VISIBILITY
 bool swift::swift_isUniquelyReferenced_nonNull_native(
   const HeapObject* object
-) {
+) SWIFT_CC(RegisterPreservingCC_IMPL) {
   assert(object != nullptr);
   assert(!object->refCount.isDeallocating());
-  SWIFT_ISUNIQUELYREFERENCED();
   return object->refCount.isUniquelyReferenced();
 }
 
 bool swift::swift_isUniquelyReferenced_native(const HeapObject* object) {
   return object != nullptr
-    && swift::swift_isUniquelyReferenced_nonNull_native(object);
+    && swift::SWIFT_RT_ENTRY_CALL(swift_isUniquelyReferenced_nonNull_native)(object);
 }
 
 bool swift::swift_isUniquelyReferencedNonObjC_nonNull(const void* object) {
   assert(object != nullptr);
   return
 #if SWIFT_OBJC_INTEROP
-    _swift_usesNativeSwiftReferenceCounting_nonNull(object) &&
+    usesNativeSwiftReferenceCounting_nonNull(object) &&
 #endif 
-    swift_isUniquelyReferenced_nonNull_native((HeapObject*)object);
+    SWIFT_RT_ENTRY_CALL(swift_isUniquelyReferenced_nonNull_native)((HeapObject*)object);
 }
 
 // Given an object reference, return true iff it is non-nil and refers
@@ -1520,10 +1427,12 @@ bool swift::swift_isUniquelyReferencedNonObjC_nonNull_bridgeObject(
   // object is going to be a negligible cost for a possible big win.
 #if SWIFT_OBJC_INTEROP
   return !isNonNative_unTagged_bridgeObject(bridgeObject)
-    ? swift_isUniquelyReferenced_nonNull_native((const HeapObject *)object)
-    : swift_isUniquelyReferencedNonObjC_nonNull(object);
+             ? SWIFT_RT_ENTRY_CALL(swift_isUniquelyReferenced_nonNull_native)(
+                   (const HeapObject *)object)
+             : swift_isUniquelyReferencedNonObjC_nonNull(object);
 #else
-  return swift_isUniquelyReferenced_nonNull_native((const HeapObject *)object);
+  return SWIFT_RT_ENTRY_CALL(swift_isUniquelyReferenced_nonNull_native)(
+      (const HeapObject *)object);
 #endif
 }
 
@@ -1559,7 +1468,7 @@ bool swift::swift_isUniquelyReferencedOrPinnedNonObjC_nonNull(
   assert(object != nullptr);
   return
 #if SWIFT_OBJC_INTEROP
-    _swift_usesNativeSwiftReferenceCounting_nonNull(object) &&
+    usesNativeSwiftReferenceCounting_nonNull(object) &&
 #endif 
     swift_isUniquelyReferencedOrPinned_nonNull_native(
                                                     (const HeapObject*)object);
@@ -1568,9 +1477,10 @@ bool swift::swift_isUniquelyReferencedOrPinnedNonObjC_nonNull(
 // Given a non-@objc object reference, return true iff the
 // object is non-nil and either has a strong reference count of 1
 // or is pinned.
+SWIFT_RT_ENTRY_VISIBILITY
 bool swift::swift_isUniquelyReferencedOrPinned_native(
-  const HeapObject* object
-) {
+  const HeapObject* object)
+    SWIFT_CC(RegisterPreservingCC_IMPL) {
   return object != nullptr
     && swift_isUniquelyReferencedOrPinned_nonNull_native(object);
 }
@@ -1578,33 +1488,52 @@ bool swift::swift_isUniquelyReferencedOrPinned_native(
 /// Given a non-nil native swift object reference, return true if
 /// either the object has a strong reference count of 1 or its
 /// pinned flag is set.
+SWIFT_RT_ENTRY_VISIBILITY
 bool swift::swift_isUniquelyReferencedOrPinned_nonNull_native(
-                                                    const HeapObject* object) {
-  SWIFT_ISUNIQUELYREFERENCEDORPINNED();
+                                                    const HeapObject* object)
+  SWIFT_CC(RegisterPreservingCC_IMPL) {
   assert(object != nullptr);
   assert(!object->refCount.isDeallocating());
   return object->refCount.isUniquelyReferencedOrPinned();
 }
 
-#if SWIFT_OBJC_INTEROP
-/// Returns class_getInstanceSize(c)
-///
-/// That function is otherwise unavailable to the core stdlib.
-size_t swift::_swift_class_getInstancePositiveExtentSize(const void* c) {
-  return class_getInstanceSize((Class)c);
-}
-#endif
+using ClassExtents = TwoWordPair<size_t, size_t>;
 
-extern "C" size_t _swift_class_getInstancePositiveExtentSize_native(
-    const Metadata *c) {
+SWIFT_RUNTIME_EXPORT
+extern "C"
+ClassExtents::Return
+swift_class_getInstanceExtents(const Metadata *c) {
   assert(c && c->isClassObject());
   auto metaData = c->getClassObject();
-  return metaData->getInstanceSize() - metaData->getInstanceAddressPoint();
+  return ClassExtents{
+    metaData->getInstanceAddressPoint(),
+    metaData->getInstanceSize() - metaData->getInstanceAddressPoint()
+  };
 }
+
+#if SWIFT_OBJC_INTEROP
+
+SWIFT_RUNTIME_EXPORT
+extern "C"
+ClassExtents::Return
+swift_objc_class_unknownGetInstanceExtents(const ClassMetadata* c) {
+  // Pure ObjC classes never have negative extents.
+  if (c->isPureObjC())
+    return ClassExtents{0, class_getInstanceSize((Class)c)};
+  
+  return swift_class_getInstanceExtents(c);
+}
+
+#endif
 
 const ClassMetadata *swift::getRootSuperclass() {
 #if SWIFT_OBJC_INTEROP
-  return (const ClassMetadata *)[SwiftObject class];
+  static Lazy<const ClassMetadata *> SwiftObjectClass;
+
+  return SwiftObjectClass.get([](void *ptr) {
+    *((const ClassMetadata **) ptr) =
+        (const ClassMetadata *)[SwiftObject class];
+  });
 #else
   return nullptr;
 #endif

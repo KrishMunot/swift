@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -18,7 +18,6 @@
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/Fallthrough.h"
 #include "swift/Basic/Lazy.h"
-#include "swift/Runtime/Concurrent.h"
 #include "swift/Runtime/Config.h"
 #include "swift/Runtime/Enum.h"
 #include "swift/Runtime/HeapObject.h"
@@ -32,19 +31,12 @@
 #include "../SwiftShims/RuntimeShims.h"
 #include "stddef.h"
 
-#if defined(__APPLE__) && defined(__MACH__)
-#include <mach-o/dyld.h>
-#include <mach-o/getsect.h>
-#elif defined(__ELF__)
-#include <elf.h>
-#include <link.h>
-#endif
-
-#include <dlfcn.h>
 #include <cstring>
-#include <mutex>
-#include <atomic>
 #include <type_traits>
+
+// FIXME: SR-946 - we ideally want to switch off of using pthread_rwlock
+//                 directly and instead expand Mutex.h to support rwlocks.
+#include <mutex>
 
 // FIXME: Clang defines max_align_t in stddef.h since 3.6.
 // Remove this hack when we don't care about older Clangs on all platforms.
@@ -58,14 +50,13 @@ using namespace swift;
 using namespace metadataimpl;
 
 #if SWIFT_OBJC_INTEROP
-//#include <objc/objc-runtime.h>
 #include <objc/NSObject.h>
 #include <objc/runtime.h>
 #include <objc/message.h>
 #include <objc/objc.h>
 
 // Aliases for Objective-C runtime entry points.
-const char *class_getName(const ClassMetadata* type) {
+static const char *class_getName(const ClassMetadata* type) {
   return class_getName(
     reinterpret_cast<Class>(const_cast<ClassMetadata*>(type)));
 }
@@ -352,6 +343,7 @@ std::string swift::nameForMetadata(const Metadata *type,
   return result;
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C"
 TwoWordPair<const char *, uintptr_t>::Return
 swift_getTypeName(const Metadata *type, bool qualified) {
@@ -407,7 +399,8 @@ swift::swift_dynamicCastFailure(const void *sourceType, const char *sourceName,
                                 const char *message) {
   asm("");
 
-  swift::fatalError("Could not cast value of type '%s' (%p) to '%s' (%p)%s%s\n",
+  swift::fatalError(/* flags = */ 0,
+                    "Could not cast value of type '%s' (%p) to '%s' (%p)%s%s\n",
                     sourceName, sourceType, 
                     targetName, targetType, 
                     message ? ": " : ".", 
@@ -469,9 +462,14 @@ static bool _dynamicCastClassToValueViaObjCBridgeable(
 
 /// A convenient method for failing out of a dynamic cast.
 static bool _fail(OpaqueValue *srcValue, const Metadata *srcType,
-                  const Metadata *targetType, DynamicCastFlags flags) {
-  if (flags & DynamicCastFlags::Unconditional)
-    swift_dynamicCastFailure(srcType, targetType);
+                  const Metadata *targetType, DynamicCastFlags flags,
+                  const Metadata *srcDynamicType = nullptr) {
+  if (flags & DynamicCastFlags::Unconditional) {
+    const Metadata *srcTypeToReport =
+        srcDynamicType ? srcDynamicType
+                       : srcType;
+    swift_dynamicCastFailure(srcTypeToReport, targetType);
+  }
   if (flags & DynamicCastFlags::DestroyOnFailure)
     srcType->vw_destroy(srcValue);
   return false;
@@ -503,9 +501,11 @@ _dynamicCastClassMetatype(const ClassMetadata *sourceType,
 }
 
 /// Dynamically cast a class instance to a Swift class type.
+SWIFT_RT_ENTRY_VISIBILITY
 const void *
 swift::swift_dynamicCastClass(const void *object,
-                              const ClassMetadata *targetType) {
+                              const ClassMetadata *targetType)
+    SWIFT_CC(RegisterPreservingCC_IMPL) {
 #if SWIFT_OBJC_INTEROP
   assert(!targetType->isPureObjC());
 
@@ -602,7 +602,7 @@ static bool _conformsToProtocol(const OpaqueValue *value,
     if (value) {
       return _unknownClassConformsToObjCProtocol(value, protocol);
     } else {
-      return _swift_classConformsToObjCProtocol(type, protocol);
+      return classConformsToObjCProtocol(type, protocol);
     }
 #endif
     return false;
@@ -613,7 +613,7 @@ static bool _conformsToProtocol(const OpaqueValue *value,
       return _unknownClassConformsToObjCProtocol(value, protocol);
     } else {
       auto wrapper = cast<ObjCClassWrapperMetadata>(type);
-      return _swift_classConformsToObjCProtocol(wrapper->Class, protocol);
+      return classConformsToObjCProtocol(wrapper->Class, protocol);
     }
 #endif
     return false;
@@ -714,7 +714,7 @@ static void findDynamicValueAndType(OpaqueValue *value, const Metadata *type,
     }
     
     case ExistentialTypeRepresentation::Opaque:
-    case ExistentialTypeRepresentation::ErrorType: {
+    case ExistentialTypeRepresentation::ErrorProtocol: {
       OpaqueValue *innerValue
         = existentialType->projectValue(value);
       const Metadata *innerType = existentialType->getDynamicType(value);
@@ -770,7 +770,7 @@ static void deallocateDynamicValue(OpaqueValue *value, const Metadata *type) {
       // Nothing to clean up.
       break;
       
-    case ExistentialTypeRepresentation::ErrorType:
+    case ExistentialTypeRepresentation::ErrorProtocol:
       // TODO: We could clean up from a reclaimed uniquely-referenced error box.
       break;
       
@@ -811,6 +811,7 @@ static void deallocateDynamicValue(OpaqueValue *value, const Metadata *type) {
 }
 
 #if SWIFT_OBJC_INTEROP
+SWIFT_RUNTIME_EXPORT
 extern "C" id
 swift_dynamicCastMetatypeToObjectConditional(const Metadata *metatype) {
   switch (metatype->getKind()) {
@@ -842,6 +843,7 @@ swift_dynamicCastMetatypeToObjectConditional(const Metadata *metatype) {
   }
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" id
 swift_dynamicCastMetatypeToObjectUnconditional(const Metadata *metatype) {
   switch (metatype->getKind()) {
@@ -986,7 +988,7 @@ static bool _dynamicCastToExistential(OpaqueValue *dest,
     if (!_conformsToProtocols(srcDynamicValue, srcDynamicType,
                               targetType->Protocols,
                               destExistential->getWitnessTables())) {
-      return _fail(srcDynamicValue, srcDynamicType, targetType, flags);
+      return _fail(src, srcType, targetType, flags, srcDynamicType);
     }
 
     auto object = *(reinterpret_cast<HeapObject**>(srcDynamicValue));
@@ -1005,7 +1007,7 @@ static bool _dynamicCastToExistential(OpaqueValue *dest,
     if (!_conformsToProtocols(srcDynamicValue, srcDynamicType,
                               targetType->Protocols,
                               destExistential->getWitnessTables()))
-      return _fail(srcDynamicValue, srcDynamicType, targetType, flags);
+      return _fail(src, srcType, targetType, flags, srcDynamicType);
 
     // Fill in the type and value.
     destExistential->Type = srcDynamicType;
@@ -1019,17 +1021,17 @@ static bool _dynamicCastToExistential(OpaqueValue *dest,
     maybeDeallocateSourceAfterSuccess();
     return true;
   }
-  case ExistentialTypeRepresentation::ErrorType: {
+  case ExistentialTypeRepresentation::ErrorProtocol: {
     auto destBoxAddr =
       reinterpret_cast<SwiftError**>(dest);
-    // Check for the ErrorType protocol conformance, which should be the only
+    // Check for the ErrorProtocol protocol conformance, which should be the only
     // one we need.
     assert(targetType->Protocols.NumProtocols == 1);
     const WitnessTable *errorWitness;
     if (!_conformsToProtocols(srcDynamicValue, srcDynamicType,
                               targetType->Protocols,
                               &errorWitness))
-      return _fail(srcDynamicValue, srcDynamicType, targetType, flags);
+      return _fail(src, srcType, targetType, flags, srcDynamicType);
     
     BoxPair destBox = swift_allocError(srcDynamicType, errorWitness,
                                        srcDynamicValue,
@@ -1058,7 +1060,7 @@ _dynamicCastUnknownClassToExistential(const void *object,
       if (protocol->Flags.getSpecialProtocol() == SpecialProtocol::AnyObject)
         break;
 
-      if (!_swift_objectConformsToObjCProtocol(object, protocol))
+      if (!objectConformsToObjCProtocol(object, protocol))
         return nullptr;
       break;
 #else
@@ -1459,13 +1461,13 @@ static bool _dynamicCastUnknownClassIndirect(OpaqueValue *dest,
 }
 
 #if SWIFT_OBJC_INTEROP
-extern "C" const ProtocolDescriptor _TMps9ErrorType;
+extern "C" const ProtocolDescriptor _TMps13ErrorProtocol;
 
-static const WitnessTable *findErrorTypeWitness(const Metadata *srcType) {
-  return swift_conformsToProtocol(srcType, &_TMps9ErrorType);
+static const WitnessTable *findErrorProtocolWitness(const Metadata *srcType) {
+  return swift_conformsToProtocol(srcType, &_TMps13ErrorProtocol);
 }
 
-static const Metadata *getNSErrorTypeMetadata() {
+static const Metadata *getNSErrorProtocolMetadata() {
   return SWIFT_LAZY_CONSTANT(
     swift_getObjCClassMetadata((const ClassMetadata *)getNSErrorClass()));
 }
@@ -1486,7 +1488,7 @@ static bool _dynamicCastToUnknownClassFromExistential(OpaqueValue *dest,
 #if SWIFT_OBJC_INTEROP
     // If we're casting to NSError, we may need a representation change,
     // so fall into the general swift_dynamicCast path.
-    if (targetType == getNSErrorTypeMetadata()) {
+    if (targetType == getNSErrorProtocolMetadata()) {
       return swift_dynamicCast(dest, src, swift_getObjectType((HeapObject*)obj),
                                targetType, flags);
     }
@@ -1508,7 +1510,7 @@ static bool _dynamicCastToUnknownClassFromExistential(OpaqueValue *dest,
       _maybeDeallocateOpaqueExistential(src, result, flags);
     return result;
   }
-  case ExistentialTypeRepresentation::ErrorType: {
+  case ExistentialTypeRepresentation::ErrorProtocol: {
     const SwiftError *errorBox =
       *reinterpret_cast<const SwiftError * const *>(src);
     auto srcCapturedType = errorBox->getType();
@@ -1565,7 +1567,7 @@ static bool _dynamicCastFromExistential(OpaqueValue *dest,
     canTake = true;
     break;
   }
-  case ExistentialTypeRepresentation::ErrorType: {
+  case ExistentialTypeRepresentation::ErrorProtocol: {
     const SwiftError *errorBox
       = *reinterpret_cast<const SwiftError * const *>(src);
     
@@ -1590,12 +1592,18 @@ static bool _dynamicCastFromExistential(OpaqueValue *dest,
 
   bool result = swift_dynamicCast(dest, srcValue, srcCapturedType,
                                   targetType, subFlags);
-  // Deallocate the existential husk if we took from it.
-  if (canTake && result && isOutOfLine)
-    _maybeDeallocateOpaqueExistential(src, result, flags);
-  // If we couldn't take, we still may need to destroy the whole value.
-  else if (!canTake && shouldDeallocateSource(result, flags))
-    srcType->vw_destroy(src);
+
+  if (!canTake) {
+    // swift_dynamicCast performed no memory management.
+    // Destroy the value if requested.
+    if (shouldDeallocateSource(result, flags))
+      srcType->vw_destroy(src);
+  } else {
+    // swift_dynamicCast took or destroyed the value as per the original request
+    // We may still have an opaque existential container to deallocate.
+    if (isOutOfLine)
+      _maybeDeallocateOpaqueExistential(src, result, flags);
+  }
 
   return result;
 }
@@ -1694,7 +1702,7 @@ static bool _dynamicCastToMetatype(OpaqueValue *dest,
         _maybeDeallocateOpaqueExistential(src, result, flags);
       return result;
     }
-    case ExistentialTypeRepresentation::ErrorType: {
+    case ExistentialTypeRepresentation::ErrorProtocol: {
       const SwiftError *srcBox
         = *reinterpret_cast<const SwiftError * const *>(src);
       
@@ -1864,7 +1872,7 @@ static bool _dynamicCastToExistentialMetatype(OpaqueValue *dest,
         _maybeDeallocateOpaqueExistential(src, result, flags);
       return result;
     }
-    case ExistentialTypeRepresentation::ErrorType: {
+    case ExistentialTypeRepresentation::ErrorProtocol: {
       const SwiftError *srcBox
         = *reinterpret_cast<const SwiftError * const *>(src);
       
@@ -1906,10 +1914,7 @@ static bool _dynamicCastToExistentialMetatype(OpaqueValue *dest,
   case MetadataKind::Opaque:
   case MetadataKind::Struct:
   case MetadataKind::Tuple:
-    if (flags & DynamicCastFlags::Unconditional) {
-      swift_dynamicCastFailure(srcType, targetType);
-    }
-    return false;
+    return _fail(src, srcType, targetType, flags);
   }
   _failCorruptType(srcType);
 }
@@ -1982,57 +1987,103 @@ static bool _dynamicCastToFunction(OpaqueValue *dest,
 #if SWIFT_OBJC_INTEROP
 static id dynamicCastValueToNSError(OpaqueValue *src,
                                     const Metadata *srcType,
-                                    const WitnessTable *srcErrorTypeWitness,
+                                    const WitnessTable *srcErrorProtocolWitness,
                                     DynamicCastFlags flags) {
-  BoxPair errorBox = swift_allocError(srcType, srcErrorTypeWitness, src,
+  BoxPair errorBox = swift_allocError(srcType, srcErrorProtocolWitness, src,
                             /*isTake*/ flags & DynamicCastFlags::TakeOnSuccess);
-  return swift_bridgeErrorTypeToNSError((SwiftError*)errorBox.first);
+  return swift_bridgeErrorProtocolToNSError((SwiftError*)errorBox.first);
 }
 #endif
 
-static bool canCastToExistential(OpaqueValue *dest, OpaqueValue *src,
-                                 const Metadata *srcType,
-                                 const Metadata *targetType) {
-  if (targetType->getKind() != MetadataKind::Existential)
-    return false;
+namespace {
 
-  return _dynamicCastToExistential(dest, src, srcType,
-                                   cast<ExistentialTypeMetadata>(targetType),
-                                   DynamicCastFlags::Default);
+struct OptionalCastResult {
+  bool success;
+  const Metadata* payloadType;
+};
+
+}
+
+/// Handle optional unwrapping of the cast source.
+/// \returns {true, nullptr} if the cast succeeds without unwrapping.
+/// \returns {false, nullptr} if the cast fails before unwrapping.
+/// \returns {false, payloadType} if the cast should be attempted using an
+/// equivalent payloadType.
+static OptionalCastResult
+checkDynamicCastFromOptional(OpaqueValue *dest,
+                             OpaqueValue *src,
+                             const Metadata *srcType,
+                             const Metadata *targetType,
+                             DynamicCastFlags flags) {
+  if (srcType->getKind() != MetadataKind::Optional)
+    return {false, srcType};
+
+  // Check if the target is an existential that Optional always conforms to.
+  if (targetType->getKind() == MetadataKind::Existential) {
+    // Attempt a conditional cast without destroying on failure.
+    DynamicCastFlags checkCastFlags
+      = flags - (DynamicCastFlags::Unconditional
+                 | DynamicCastFlags::DestroyOnFailure);
+    assert((checkCastFlags - DynamicCastFlags::TakeOnSuccess)
+           == DynamicCastFlags::Default && "Unhandled DynamicCastFlag");
+    if (_dynamicCastToExistential(dest, src, srcType,
+                                  cast<ExistentialTypeMetadata>(targetType),
+                                  checkCastFlags)) {
+      return {true, nullptr};
+    }
+  }
+  const Metadata *payloadType =
+    cast<EnumMetadata>(srcType)->getGenericArgs()[0];
+  int enumCase =
+    swift_getEnumCaseSinglePayload(src, payloadType, 1 /*emptyCases=*/);
+  if (enumCase != -1) {
+    // Allow Optional<T>.none -> Optional<U>.none
+    if (targetType->getKind() != MetadataKind::Optional) {
+      _fail(src, srcType, targetType, flags);
+      return {false, nullptr};
+    }
+
+    // Get the destination payload type
+    const Metadata *targetPayloadType =
+      cast<EnumMetadata>(targetType)->getGenericArgs()[0];
+
+    // Inject the .none tag
+    swift_storeEnumTagSinglePayload(dest, targetPayloadType, enumCase,
+                                    1 /*emptyCases=*/);
+
+    // We don't have to destroy the source, because it was nil.
+    return {true, nullptr};
+  }
+  // .Some
+  // Single payload enums are guaranteed layout compatible with their
+  // payload. Only the source's payload needs to be taken or destroyed.
+  return {false, payloadType};
 }
 
 /// Perform a dynamic cast to an arbitrary type.
+SWIFT_RT_ENTRY_VISIBILITY
 bool swift::swift_dynamicCast(OpaqueValue *dest,
                               OpaqueValue *src,
                               const Metadata *srcType,
                               const Metadata *targetType,
-                              DynamicCastFlags flags) {
-  // Check if the cast source is Optional and the target is not an existential
-  // that Optional conforms to. Unwrap one level of Optional and continue.
-  if (srcType->getKind() == MetadataKind::Optional
-      && !canCastToExistential(dest, src, srcType, targetType)) {
-    const Metadata *payloadType =
-      cast<EnumMetadata>(srcType)->getGenericArgs()[0];
-    int enumCase =
-      swift_getEnumCaseSinglePayload(src, payloadType, 1 /*emptyCases=*/);
-    if (enumCase != -1) {
-      // Allow Optional<T>.None -> Optional<U>.None
-      if (targetType->getKind() != MetadataKind::Optional)
-        return _fail(src, srcType, targetType, flags);
-      // Inject the .None tag
-      swift_storeEnumTagSinglePayload(dest, payloadType, enumCase,
-                                      1 /*emptyCases=*/);
-      return _succeed(dest, src, srcType, flags);        
-    }
-    // .Some
-    // Single payload enums are guaranteed layout compatible with their
-    // payload. Only the source's payload needs to be taken or destroyed.
-    srcType = payloadType;
-  }
+                              DynamicCastFlags flags)
+    SWIFT_CC(RegisterPreservingCC_IMPL) {
+  auto unwrapResult = checkDynamicCastFromOptional(dest, src, srcType,
+                                                   targetType, flags);
+  srcType = unwrapResult.payloadType;
+  if (!srcType)
+    return unwrapResult.success;
 
   switch (targetType->getKind()) {
   // Handle wrapping an Optional target.
   case MetadataKind::Optional: {
+    // If the source is an existential, attempt to cast it first without
+    // unwrapping the target. This handles an optional source wrapped within an
+    // existential that Optional conforms to (Any).
+    if (auto srcExistentialType = dyn_cast<ExistentialTypeMetadata>(srcType)) {
+      return _dynamicCastFromExistential(dest, src, srcExistentialType,
+                                         targetType, flags);
+    }
     // Recursively cast into the layout compatible payload area.
     const Metadata *payloadType =
       cast<EnumMetadata>(targetType)->getGenericArgs()[0];
@@ -2049,16 +2100,16 @@ bool swift::swift_dynamicCast(OpaqueValue *dest,
   case MetadataKind::ObjCClassWrapper:
 #if SWIFT_OBJC_INTEROP
     // If the destination type is an NSError, and the source type is an
-    // ErrorType, then the cast can succeed by NSError bridging.
-    if (targetType == getNSErrorTypeMetadata()) {
+    // ErrorProtocol, then the cast can succeed by NSError bridging.
+    if (targetType == getNSErrorProtocolMetadata()) {
       // Don't rebridge if the source is already some kind of NSError.
       if (srcType->isAnyClass()
           && swift_dynamicCastObjCClass(*reinterpret_cast<id*>(src),
                static_cast<const ObjCClassWrapperMetadata*>(targetType)->Class))
         return _succeed(dest, src, srcType, flags);
-      if (auto srcErrorTypeWitness = findErrorTypeWitness(srcType)) {
+      if (auto srcErrorProtocolWitness = findErrorProtocolWitness(srcType)) {
         auto error = dynamicCastValueToNSError(src, srcType,
-                                               srcErrorTypeWitness, flags);
+                                               srcErrorProtocolWitness, flags);
         *reinterpret_cast<id *>(dest) = error;
         return true;
       }
@@ -2148,8 +2199,8 @@ bool swift::swift_dynamicCast(OpaqueValue *dest,
                                                          flags);
       }
       
-      // If the source is an NSError, and the target is a bridgeable ErrorType,
-      // try to bridge.
+      // If the source is an NSError, and the target is a bridgeable
+      // ErrorProtocol, try to bridge.
       if (tryDynamicCastNSErrorToValue(dest, src, srcType, targetType, flags)) {
         return true;
       }
@@ -2196,580 +2247,7 @@ bool swift::swift_dynamicCast(OpaqueValue *dest,
   _failCorruptType(srcType);
 }
 
-#if defined(NDEBUG) && SWIFT_OBJC_INTEROP
-void ProtocolConformanceRecord::dump() const {
-  auto symbolName = [&](const void *addr) -> const char * {
-    Dl_info info;
-    int ok = dladdr(addr, &info);
-    if (!ok)
-      return "<unknown addr>";
-    return info.dli_sname;
-  };
-
-  switch (auto kind = getTypeKind()) {
-    case ProtocolConformanceTypeKind::Universal:
-      printf("universal");
-      break;
-    case ProtocolConformanceTypeKind::UniqueDirectType:
-    case ProtocolConformanceTypeKind::NonuniqueDirectType:
-      printf("%s direct type ",
-             kind == ProtocolConformanceTypeKind::UniqueDirectType
-             ? "unique" : "nonunique");
-      if (auto ntd = getDirectType()->getNominalTypeDescriptor()) {
-        printf("%s", ntd->Name);
-      } else {
-        printf("<structural type>");
-      }
-      break;
-    case ProtocolConformanceTypeKind::UniqueDirectClass:
-      printf("unique direct class %s",
-             class_getName(getDirectClass()));
-      break;
-    case ProtocolConformanceTypeKind::UniqueIndirectClass:
-      printf("unique indirect class %s",
-             class_getName(*getIndirectClass()));
-      break;
-      
-    case ProtocolConformanceTypeKind::UniqueGenericPattern:
-      printf("unique generic type %s", symbolName(getGenericPattern()));
-      break;
-  }
-  
-  printf(" => ");
-  
-  switch (getConformanceKind()) {
-    case ProtocolConformanceReferenceKind::WitnessTable:
-      printf("witness table %s\n", symbolName(getStaticWitnessTable()));
-      break;
-    case ProtocolConformanceReferenceKind::WitnessTableAccessor:
-      printf("witness table accessor %s\n",
-             symbolName((const void *)(uintptr_t)getWitnessTableAccessor()));
-      break;
-  }
-}
-#endif
-
-/// Take the type reference inside a protocol conformance record and fetch the
-/// canonical metadata pointer for the type it refers to.
-/// Returns nil for universal or generic type references.
-const Metadata *ProtocolConformanceRecord::getCanonicalTypeMetadata()
-const {
-  switch (getTypeKind()) {
-  case ProtocolConformanceTypeKind::UniqueDirectType:
-    // Already unique.
-    return getDirectType();
-  case ProtocolConformanceTypeKind::NonuniqueDirectType:
-    // Ask the runtime for the unique metadata record we've canonized.
-    return swift_getForeignTypeMetadata((ForeignTypeMetadata*)getDirectType());
-  case ProtocolConformanceTypeKind::UniqueIndirectClass:
-    // The class may be ObjC, in which case we need to instantiate its Swift
-    // metadata. The class additionally may be weak-linked, so we have to check
-    // for null.
-    if (auto *ClassMetadata = *getIndirectClass())
-      return swift_getObjCClassMetadata(ClassMetadata);
-    return nullptr;
-      
-  case ProtocolConformanceTypeKind::UniqueDirectClass:
-    // The class may be ObjC, in which case we need to instantiate its Swift
-    // metadata.
-    if (auto *ClassMetadata = getDirectClass())
-      return swift_getObjCClassMetadata(ClassMetadata);
-    return nullptr;
-      
-  case ProtocolConformanceTypeKind::UniqueGenericPattern:
-  case ProtocolConformanceTypeKind::Universal:
-    // The record does not apply to a single type.
-    return nullptr;
-  }
-}
-
-const WitnessTable *ProtocolConformanceRecord::getWitnessTable(const Metadata *type)
-const {
-  switch (getConformanceKind()) {
-  case ProtocolConformanceReferenceKind::WitnessTable:
-    return getStaticWitnessTable();
-
-  case ProtocolConformanceReferenceKind::WitnessTableAccessor:
-    return getWitnessTableAccessor()(type);
-  }
-}
-
-#if defined(__APPLE__) && defined(__MACH__)
-#define SWIFT_PROTOCOL_CONFORMANCES_SECTION "__swift2_proto"
-#elif defined(__ELF__)
-#define SWIFT_PROTOCOL_CONFORMANCES_SECTION ".swift2_protocol_conformances_start"
-#endif
-
-// std:once_flag token to install the dyld callback to enqueue images for
-// protocol conformance lookup.
-static std::once_flag InstallProtocolConformanceAddImageCallbackOnce;
-
-namespace {
-  struct ConformanceSection {
-    const ProtocolConformanceRecord *Begin, *End;
-    const ProtocolConformanceRecord *begin() const {
-      return Begin;
-    }
-    const ProtocolConformanceRecord *end() const {
-      return End;
-    }
-  };
-
-  struct ConformanceCacheEntry {
-  private:
-    const void *Type; 
-    const ProtocolDescriptor *Proto;
-    uintptr_t Data;
-    // All Darwin 64-bit platforms reserve the low 2^32 of address space, which
-    // is more than enough invalid pointer values for any realistic generation
-    // number. It's a little easier to overflow on 32-bit, so we need an extra
-    // bit there.
-#if !__LP64__
-    bool Success;
-#endif
-
-    ConformanceCacheEntry(const void *type,
-                          const ProtocolDescriptor *proto,
-                          uintptr_t Data, bool Success)
-      : Type(type), Proto(proto), Data(Data)
-#if !__LP64__
-        , Success(Success)
-#endif
-    {
-#if __LP64__
-#  if __APPLE__
-      assert((!Success && Data <= 0xFFFFFFFFU) ||
-             (Success && Data > 0xFFFFFFFFU));
-#  elif __linux__ || __FreeBSD__
-      assert((!Success && Data <= 0x0FFFU) ||
-             (Success && Data > 0x0FFFU));
-#  else
-#    error "port me"
-#  endif
-#endif
-  }
-
-  public:
-    ConformanceCacheEntry() = default;
-
-    static ConformanceCacheEntry createSuccess(
-        const void *type, const ProtocolDescriptor *proto,
-        const swift::WitnessTable *witness) {
-      return ConformanceCacheEntry(type, proto, (uintptr_t) witness, true);
-    }
-
-    static ConformanceCacheEntry createFailure(
-        const void *type, const ProtocolDescriptor *proto,
-        unsigned failureGeneration) {
-      return ConformanceCacheEntry(type, proto, (uintptr_t) failureGeneration,
-          false);
-    }
-
-    /// \returns true if the entry represents an entry for the pair \p type
-    /// and \p proto.
-    bool matches(const void *type, const ProtocolDescriptor *proto) {
-      return type == Type && Proto == proto;
-    }
-   
-    bool isSuccessful() const {
-#if __LP64__
-#  if __APPLE__
-      return Data > 0xFFFFFFFFU;
-#  elif __linux__ || __FreeBSD__
-      return Data > 0x0FFFU;
-#  else
-#    error "port me"
-#  endif
-#else
-      return Success;
-#endif
-    }
-    
-    /// Get the cached witness table, if successful.
-    const WitnessTable *getWitnessTable() const {
-      assert(isSuccessful());
-      return (const WitnessTable *)Data;
-    }
-    
-    /// Get the generation number under which this lookup failed.
-    unsigned getFailureGeneration() const {
-      assert(!isSuccessful());
-      return Data;
-    }
-  };
-}
-
-// Conformance Cache.
-
-struct ConformanceState {
-  ConcurrentMap<size_t, ConformanceCacheEntry> Cache;
-  std::vector<ConformanceSection> SectionsToScan;
-  pthread_mutex_t SectionsToScanLock;
-  
-  ConformanceState() {
-    SectionsToScan.reserve(16);
-    pthread_mutex_init(&SectionsToScanLock, nullptr);
-  }
-};
-
-static Lazy<ConformanceState> Conformances;
-
-// This variable is used to signal when a cache was generated and
-// it is correct to avoid a new scan.
-static unsigned ConformanceCacheGeneration = 0;
-
-void
-swift::swift_registerProtocolConformances(const ProtocolConformanceRecord *begin,
-                                          const ProtocolConformanceRecord *end){
-  auto &C = Conformances.get();
-
-  pthread_mutex_lock(&C.SectionsToScanLock);
-
-  C.SectionsToScan.push_back(ConformanceSection{begin, end});
-
-  pthread_mutex_unlock(&C.SectionsToScanLock);
-}
-
-static void _addImageProtocolConformancesBlock(const uint8_t *conformances,
-                                               size_t conformancesSize) {
-  assert(conformancesSize % sizeof(ProtocolConformanceRecord) == 0
-         && "weird-sized conformances section?!");
-
-  // If we have a section, enqueue the conformances for lookup.
-  auto recordsBegin
-    = reinterpret_cast<const ProtocolConformanceRecord*>(conformances);
-  auto recordsEnd
-    = reinterpret_cast<const ProtocolConformanceRecord*>
-                                            (conformances + conformancesSize);
-  swift_registerProtocolConformances(recordsBegin, recordsEnd);
-}
-
-#if defined(__APPLE__) && defined(__MACH__)
-static void _addImageProtocolConformances(const mach_header *mh,
-                                          intptr_t vmaddr_slide) {
-#ifdef __LP64__
-  using mach_header_platform = mach_header_64;
-  assert(mh->magic == MH_MAGIC_64 && "loaded non-64-bit image?!");
-#else
-  using mach_header_platform = mach_header;
-#endif
-  
-  // Look for a __swift2_proto section.
-  unsigned long conformancesSize;
-  const uint8_t *conformances =
-    getsectiondata(reinterpret_cast<const mach_header_platform *>(mh),
-                   SEG_TEXT, SWIFT_PROTOCOL_CONFORMANCES_SECTION,
-                   &conformancesSize);
-  
-  if (!conformances)
-    return;
-  
-  _addImageProtocolConformancesBlock(conformances, conformancesSize);
-}
-#elif defined(__ELF__)
-static int _addImageProtocolConformances(struct dl_phdr_info *info,
-                                          size_t size, void * /*data*/) {
-  void *handle;
-  if (!info->dlpi_name || info->dlpi_name[0] == '\0') {
-    handle = dlopen(nullptr, RTLD_LAZY);
-  } else
-    handle = dlopen(info->dlpi_name, RTLD_LAZY | RTLD_NOLOAD);
-  auto conformances = reinterpret_cast<const uint8_t*>(
-      dlsym(handle, SWIFT_PROTOCOL_CONFORMANCES_SECTION));
-
-  if (!conformances) {
-    // if there are no conformances, don't hold this handle open.
-    dlclose(handle);
-    return 0;
-  }
-
-  // Extract the size of the conformances block from the head of the section
-  auto conformancesSize = *reinterpret_cast<const uint64_t*>(conformances);
-  conformances += sizeof(conformancesSize);
-
-  _addImageProtocolConformancesBlock(conformances, conformancesSize);
-
-  dlclose(handle);
-  return 0;
-}
-#endif
-
-static void installCallbacksToInspectDylib() {
-  static OnceToken_t token;
-  auto callback = [](void*) {
-  #if defined(__APPLE__) && defined(__MACH__)
-    // Install our dyld callback if we haven't already.
-    // Dyld will invoke this on our behalf for all images that have already
-    // been loaded.
-    _dyld_register_func_for_add_image(_addImageProtocolConformances);
-  #elif defined(__ELF__)
-    // Search the loaded dls. Unlike the above, this only searches the already
-    // loaded ones.
-    // FIXME: Find a way to have this continue to happen after.
-    // rdar://problem/19045112
-    dl_iterate_phdr(_addImageProtocolConformances, nullptr);
-  #else
-  # error No known mechanism to inspect dynamic libraries on this platform.
-  #endif
-  };
-  
-  SWIFT_ONCE_F(token, callback, nullptr);
-}
-
-static size_t hashTypeProtocolPair(const void *type,
-                                   const ProtocolDescriptor *protocol) {
-  // A simple hash function for the conformance pair.
-  return (size_t)type + ((size_t)protocol >> 2);
-}
-
-/// Search the witness table in the ConformanceCache. \returns a pair of the
-/// WitnessTable pointer and a boolean value True if a definitive value is
-/// found. \returns false if the type or its superclasses were not found in
-/// the cache.
-static
-std::pair<const WitnessTable *, bool>
-searchInConformanceCache(const Metadata *type,
-                         const ProtocolDescriptor *protocol,
-                         ConformanceCacheEntry *&foundEntry) {
-  auto &C = Conformances.get();
-  auto origType = type;
-
-  foundEntry = nullptr;
-
-recur_inside_cache_lock:
-
-  // See if we have a cached conformance. Try the specific type first.
-
-  // Hash and lookup the type-protocol pair in the cache.
-  size_t hash = hashTypeProtocolPair(type, protocol);
-  ConcurrentList<ConformanceCacheEntry> &Bucket =
-    C.Cache.findOrAllocateNode(hash);
-
-  // Check if the type-protocol entry exists in the cache entry that we found.
-  for (auto &Entry : Bucket) {
-    if (!Entry.matches(type, protocol)) continue;
-
-    if (Entry.isSuccessful()) {
-      return std::make_pair(Entry.getWitnessTable(), true);
-    }
-
-    if (type == origType)
-      foundEntry = &Entry;
-
-    // If we got a cached negative response, check the generation number.
-    if (Entry.getFailureGeneration() == C.SectionsToScan.size()) {
-      // We found an entry with a negative value.
-      return std::make_pair(nullptr, true);
-    }
-  }
-
-  // If the type is generic, see if there's a shared nondependent witness table
-  // for its instances.
-  if (auto generic = type->getGenericPattern()) {
-    // Hash and lookup the type-protocol pair in the cache.
-    size_t hash = hashTypeProtocolPair(generic, protocol);
-    ConcurrentList<ConformanceCacheEntry> &Bucket =
-      C.Cache.findOrAllocateNode(hash);
-
-    for (auto &Entry : Bucket) {
-      if (!Entry.matches(generic, protocol)) continue;
-      if (Entry.isSuccessful()) {
-        return std::make_pair(Entry.getWitnessTable(), true);
-      }
-      // We don't try to cache negative responses for generic
-      // patterns.
-    }
-  }
-
-  // If the type is a class, try its superclass.
-  if (const ClassMetadata *classType = type->getClassObject()) {
-    if (auto super = classType->SuperClass) {
-      if (super != getRootSuperclass()) {
-        type = swift_getObjCClassMetadata(super);
-        goto recur_inside_cache_lock;
-      }
-    }
-  }
-
-  // We did not find an entry.
-  return std::make_pair(nullptr, false);
-}
-
-/// Checks if a given candidate is a type itself, one of its
-/// superclasses or a related generic type.
-/// This check is supposed to use the same logic that is used
-/// by searchInConformanceCache.
-static
-bool isRelatedType(const Metadata *type, const void *candidate) {
-
-  while (true) {
-    if (type == candidate)
-      return true;
-
-    // If the type is generic, see if there's a shared nondependent witness table
-    // for its instances.
-    if (auto generic = type->getGenericPattern()) {
-      if (generic == candidate)
-        return true;
-    }
-
-    // If the type is a class, try its superclass.
-    if (const ClassMetadata *classType = type->getClassObject()) {
-      if (auto super = classType->SuperClass) {
-        if (super != getRootSuperclass()) {
-          type = swift_getObjCClassMetadata(super);
-          if (type == candidate)
-            return true;
-          continue;
-        }
-      }
-    }
-
-    break;
-  }
-
-  return false;
-}
-
-const WitnessTable *
-swift::swift_conformsToProtocol(const Metadata *type,
-                                const ProtocolDescriptor *protocol) {
-  auto &C = Conformances.get();
-  
-  // Install callbacks for tracking when a new dylib is loaded so we can
-  // scan it.
-  installCallbacksToInspectDylib();
-  auto origType = type;
-  
-  unsigned numSections = 0;
-
-  ConformanceCacheEntry *foundEntry;
-
-recur:
-  // See if we have a cached conformance. The ConcurrentMap data structure
-  // allows us to insert and search the map concurrently without locking.
-  // We do lock the slow path because the SectionsToScan data structure is not
-  // concurrent.
-  auto FoundConformance = searchInConformanceCache(type, protocol, foundEntry);
-  // The negative answer does not always mean that there is no conformance,
-  // unless it is an exact match on the type. If it is not an exact match,
-  // it may mean that all of the superclasses do not have this conformance,
-  // but the actual type may still have this conformance.
-  if (FoundConformance.second) {
-    if (FoundConformance.first || foundEntry)
-      return FoundConformance.first;
-  }
-
-  unsigned failedGeneration = ConformanceCacheGeneration;
-
-  // If we didn't have an up-to-date cache entry, scan the conformance records.
-  pthread_mutex_lock(&C.SectionsToScanLock);
-
-  // If we have no new information to pull in (and nobody else pulled in
-  // new information while we waited on the lock), we're done.
-  if (C.SectionsToScan.size() == numSections) {
-    if (failedGeneration != ConformanceCacheGeneration) {
-      // Someone else pulled in new conformances while we were waiting.
-      // Start over with our newly-populated cache.
-      pthread_mutex_unlock(&C.SectionsToScanLock);
-      type = origType;
-      goto recur;
-    }
-
-
-    // Hash and lookup the type-protocol pair in the cache.
-    size_t hash = hashTypeProtocolPair(type, protocol);
-    ConcurrentList<ConformanceCacheEntry> &Bucket =
-      C.Cache.findOrAllocateNode(hash);
-    Bucket.push_front(ConformanceCacheEntry::createFailure(
-        type, protocol, C.SectionsToScan.size()));
-    pthread_mutex_unlock(&C.SectionsToScanLock);
-    return nullptr;
-  }
-
-  // Update the last known number of sections to scan.
-  numSections = C.SectionsToScan.size();
-
-  // Scan only sections that were not scanned yet.
-  unsigned sectionIdx = foundEntry ? foundEntry->getFailureGeneration() : 0;
-  unsigned endSectionIdx = C.SectionsToScan.size();
-
-  for (; sectionIdx < endSectionIdx; ++sectionIdx) {
-    auto &section = C.SectionsToScan[sectionIdx];
-    // Eagerly pull records for nondependent witnesses into our cache.
-    for (const auto &record : section) {
-      // If the record applies to a specific type, cache it.
-      if (auto metadata = record.getCanonicalTypeMetadata()) {
-        auto P = record.getProtocol();
-
-        // Look for an exact match.
-        if (protocol != P)
-          continue;
-
-        if (!isRelatedType(type, metadata))
-          continue;
-
-        // Hash and lookup the type-protocol pair in the cache.
-        size_t hash = hashTypeProtocolPair(metadata, P);
-        ConcurrentList<ConformanceCacheEntry> &Bucket =
-          C.Cache.findOrAllocateNode(hash);
-
-        auto witness = record.getWitnessTable(metadata);
-        if (witness)
-          Bucket.push_front(
-              ConformanceCacheEntry::createSuccess(metadata, P, witness));
-        else
-          Bucket.push_front(ConformanceCacheEntry::createFailure(
-              metadata, P, C.SectionsToScan.size()));
-
-      // If the record provides a nondependent witness table for all instances
-      // of a generic type, cache it for the generic pattern.
-      // TODO: "Nondependent witness table" probably deserves its own flag.
-      // An accessor function might still be necessary even if the witness table
-      // can be shared.
-      } else if (record.getTypeKind()
-                   == ProtocolConformanceTypeKind::UniqueGenericPattern
-                 && record.getConformanceKind()
-                   == ProtocolConformanceReferenceKind::WitnessTable) {
-
-        auto R = record.getGenericPattern();
-        auto P = record.getProtocol();
-
-        // Look for an exact match.
-        if (protocol != P)
-          continue;
-
-        if (!isRelatedType(type, R))
-          continue;
-
-        // Hash and lookup the type-protocol pair in the cache.
-        size_t hash = hashTypeProtocolPair(R, P);
-        ConcurrentList<ConformanceCacheEntry> &Bucket =
-          C.Cache.findOrAllocateNode(hash);
-          Bucket.push_front(ConformanceCacheEntry::createSuccess(
-              R, P, record.getStaticWitnessTable()));
-      }
-    }
-  }
-  ++ConformanceCacheGeneration;
-
-  pthread_mutex_unlock(&C.SectionsToScanLock);
-  // Start over with our newly-populated cache.
-  type = origType;
-  goto recur;
-}
-
-// The return type is incorrect.  It is only important that it is
-// passed using 'sret'.
-extern "C" OpaqueExistentialContainer
-_TFs24_injectValueIntoOptionalU__FQ_GSqQ__(OpaqueValue *value,
-                                            const Metadata *T);
-// The return type is incorrect.  It is only important that it is
-// passed using 'sret'.
-extern "C" OpaqueExistentialContainer
-_TFs26_injectNothingIntoOptionalU__FT_GSqQ__(const Metadata *T);
-
-static inline bool swift_isClassOrObjCExistentialImpl(const Metadata *T) {
+static inline bool swift_isClassOrObjCExistentialTypeImpl(const Metadata *T) {
   auto kind = T->getKind();
   // Classes.
   if (Metadata::isAnyKindOfClass(kind))
@@ -2799,31 +2277,38 @@ namespace {
 
 // protocol _ObjectiveCBridgeable {
 struct _ObjectiveCBridgeableWitnessTable {
-  // typealias _ObjectiveCType : class
-  const Metadata *ObjectiveCType;
+  // associatedtype _ObjectiveCType : class
+  const Metadata * (*ObjectiveCType)(
+                     const Metadata *parentMetadata,
+                     const _ObjectiveCBridgeableWitnessTable *witnessTable);
 
   // class func _isBridgedToObjectiveC() -> bool
-  bool (*isBridgedToObjectiveC)(const Metadata *value, const Metadata *T);
-
-  // class func _getObjectiveCType() -> Any.Type
-  const Metadata *(*getObjectiveCType)(const Metadata *self,
-                                       const Metadata *selfType);
+  bool (*isBridgedToObjectiveC)(
+         const Metadata *value, const Metadata *T,
+         const _ObjectiveCBridgeableWitnessTable *witnessTable);
 
   // func _bridgeToObjectiveC() -> _ObjectiveCType
-  HeapObject *(*bridgeToObjectiveC)(OpaqueValue *self, const Metadata *Self);
+  HeapObject *(*bridgeToObjectiveC)(
+                OpaqueValue *self, const Metadata *Self,
+                const _ObjectiveCBridgeableWitnessTable *witnessTable);
+
   // class func _forceBridgeFromObjectiveC(x: _ObjectiveCType,
   //                                       inout result: Self?)
-  void (*forceBridgeFromObjectiveC)(HeapObject *sourceValue,
-                                    OpaqueValue *result,
-                                    const Metadata *self,
-                                    const Metadata *selfType);
+  void (*forceBridgeFromObjectiveC)(
+         HeapObject *sourceValue,
+         OpaqueValue *result,
+         const Metadata *self,
+         const Metadata *selfType,
+         const _ObjectiveCBridgeableWitnessTable *witnessTable);
 
   // class func _conditionallyBridgeFromObjectiveC(x: _ObjectiveCType,
   //                                              inout result: Self?) -> Bool
-  bool (*conditionallyBridgeFromObjectiveC)(HeapObject *sourceValue,
-                                            OpaqueValue *result,
-                                            const Metadata *self,
-                                            const Metadata *selfType);
+  bool (*conditionallyBridgeFromObjectiveC)(
+         HeapObject *sourceValue,
+         OpaqueValue *result,
+         const Metadata *self,
+         const Metadata *selfType,
+         const _ObjectiveCBridgeableWitnessTable *witnessTable);
 };
 // }
 
@@ -2843,12 +2328,14 @@ static bool _dynamicCastValueToClassViaObjCBridgeable(
                const _ObjectiveCBridgeableWitnessTable *srcBridgeWitness,
                DynamicCastFlags flags) {
   // Check whether the source is bridged to Objective-C.
-  if (!srcBridgeWitness->isBridgedToObjectiveC(srcType, srcType)) {
+  if (!srcBridgeWitness->isBridgedToObjectiveC(srcType, srcType,
+                                               srcBridgeWitness)) {
     return _fail(src, srcType, targetType, flags);
   }
 
   // Bridge the source value to an object.
-  auto srcBridgedObject = srcBridgeWitness->bridgeToObjectiveC(src, srcType);
+  auto srcBridgedObject =
+    srcBridgeWitness->bridgeToObjectiveC(src, srcType, srcBridgeWitness);
 
   // Dynamic cast the object to the resulting class type.
   bool success;
@@ -2882,12 +2369,14 @@ static bool _dynamicCastValueToClassExistentialViaObjCBridgeable(
               const _ObjectiveCBridgeableWitnessTable *srcBridgeWitness,
               DynamicCastFlags flags) {
   // Check whether the source is bridged to Objective-C.
-  if (!srcBridgeWitness->isBridgedToObjectiveC(srcType, srcType)) {
+  if (!srcBridgeWitness->isBridgedToObjectiveC(srcType, srcType,
+                                               srcBridgeWitness)) {
     return _fail(src, srcType, targetType, flags);
   }
 
   // Bridge the source value to an object.
-  auto srcBridgedObject = srcBridgeWitness->bridgeToObjectiveC(src, srcType);
+  auto srcBridgedObject =
+    srcBridgeWitness->bridgeToObjectiveC(src, srcType, srcBridgeWitness);
 
   // Try to cast the object to the destination existential.
   DynamicCastFlags subFlags = DynamicCastFlags::TakeOnSuccess
@@ -2922,13 +2411,14 @@ static bool _dynamicCastClassToValueViaObjCBridgeable(
                const _ObjectiveCBridgeableWitnessTable *targetBridgeWitness,
                DynamicCastFlags flags) {
   // Check whether the target is bridged to Objective-C.
-  if (!targetBridgeWitness->isBridgedToObjectiveC(targetType, targetType)) {
+  if (!targetBridgeWitness->isBridgedToObjectiveC(targetType, targetType,
+                                                  targetBridgeWitness)) {
     return _fail(src, srcType, targetType, flags);
   }
 
   // Determine the class type to which the target value type is bridged.
-  auto targetBridgedClass = targetBridgeWitness->getObjectiveCType(targetType,
-                                                                   targetType);
+  auto targetBridgedClass =
+    targetBridgeWitness->ObjectiveCType(targetType, targetBridgeWitness);
 
   // Dynamic cast the source object to the class type to which the target value
   // type is bridged. If we succeed, we can bridge from there; if we fail,
@@ -2978,13 +2468,13 @@ static bool _dynamicCastClassToValueViaObjCBridgeable(
     // For an unconditional dynamic cast, use forceBridgeFromObjectiveC.
     targetBridgeWitness->forceBridgeFromObjectiveC(
       (HeapObject *)srcObject, (OpaqueValue *)optDestBuffer,
-      targetType, targetType);
+      targetType, targetType, targetBridgeWitness);
     success = true;
   } else {
     // For a conditional dynamic cast, use conditionallyBridgeFromObjectiveC.
     success = targetBridgeWitness->conditionallyBridgeFromObjectiveC(
                 (HeapObject *)srcObject, (OpaqueValue *)optDestBuffer,
-                targetType, targetType);
+                targetType, targetType, targetBridgeWitness);
   }
 
   // If we succeeded, take from the optional buffer into the
@@ -3053,18 +2543,19 @@ findBridgeWitness(const Metadata *T) {
 }
 
 /// \param value passed at +1, consumed.
+SWIFT_RUNTIME_STDLIB_INTERFACE
 extern "C" HeapObject *swift_bridgeNonVerbatimToObjectiveC(
   OpaqueValue *value, const Metadata *T
 ) {
-  assert(!swift_isClassOrObjCExistentialImpl(T));
+  assert(!swift_isClassOrObjCExistentialTypeImpl(T));
 
   if (const auto *bridgeWitness = findBridgeWitness(T)) {
-    if (!bridgeWitness->isBridgedToObjectiveC(T, T)) {
+    if (!bridgeWitness->isBridgedToObjectiveC(T, T, bridgeWitness)) {
       // Witnesses take 'self' at +0, so we still need to consume the +1 argument.
       T->vw_destroy(value);
       return nullptr;
     }
-    auto result = bridgeWitness->bridgeToObjectiveC(value, T);
+    auto result = bridgeWitness->bridgeToObjectiveC(value, T, bridgeWitness);
     // Witnesses take 'self' at +0, so we still need to consume the +1 argument.
     T->vw_destroy(value);
     return result;
@@ -3075,16 +2566,17 @@ extern "C" HeapObject *swift_bridgeNonVerbatimToObjectiveC(
   return nullptr;
 }
 
+SWIFT_RUNTIME_STDLIB_INTERFACE
 extern "C" const Metadata *swift_getBridgedNonVerbatimObjectiveCType(
   const Metadata *value, const Metadata *T
 ) {
   // Classes and Objective-C existentials bridge verbatim.
-  assert(!swift_isClassOrObjCExistentialImpl(T));
+  assert(!swift_isClassOrObjCExistentialTypeImpl(T));
 
   // Check if the type conforms to _BridgedToObjectiveC, in which case
   // we'll extract its associated type.
   if (const auto *bridgeWitness = findBridgeWitness(T)) {
-    return bridgeWitness->getObjectiveCType(T, T);
+    return bridgeWitness->ObjectiveCType(T, bridgeWitness);
   }
   
   return nullptr;
@@ -3096,6 +2588,7 @@ extern "C" const Metadata *swift_getBridgedNonVerbatimObjectiveCType(
 //     nativeType: NativeType.Type
 //     inout result: T?
 // )
+SWIFT_RUNTIME_STDLIB_INTERFACE
 extern "C" void
 swift_bridgeNonVerbatimFromObjectiveC(
   HeapObject *sourceValue,
@@ -3107,11 +2600,12 @@ swift_bridgeNonVerbatimFromObjectiveC(
   if (const auto *bridgeWitness = findBridgeWitness(nativeType)) {
     // if the type also conforms to _ConditionallyBridgedToObjectiveC,
     // make sure it bridges at runtime
-    if (bridgeWitness->isBridgedToObjectiveC(nativeType, nativeType)) {
+    if (bridgeWitness->isBridgedToObjectiveC(nativeType, nativeType,
+                                             bridgeWitness)) {
       // Check if sourceValue has the _ObjectiveCType type required by the
       // protocol.
       const Metadata *objectiveCType =
-          bridgeWitness->getObjectiveCType(nativeType, nativeType);
+          bridgeWitness->ObjectiveCType(nativeType, bridgeWitness);
         
       auto sourceValueAsObjectiveCType =
           const_cast<void*>(swift_dynamicCastUnknownClass(sourceValue,
@@ -3122,7 +2616,7 @@ swift_bridgeNonVerbatimFromObjectiveC(
         // we can just return it directly.
         bridgeWitness->forceBridgeFromObjectiveC(
           static_cast<HeapObject*>(sourceValueAsObjectiveCType),
-          destValue, nativeType, nativeType);
+          destValue, nativeType, nativeType, bridgeWitness);
         return;
       }
     }
@@ -3138,6 +2632,7 @@ swift_bridgeNonVerbatimFromObjectiveC(
 //   nativeType: T.Type,
 //   inout result: T?
 // ) -> Bool
+SWIFT_RUNTIME_STDLIB_INTERFACE
 extern "C" bool
 swift_bridgeNonVerbatimFromObjectiveCConditional(
   HeapObject *sourceValue,
@@ -3159,7 +2654,7 @@ swift_bridgeNonVerbatimFromObjectiveCConditional(
   // Dig out the Objective-C class type through which the native type
   // is bridged.
   const Metadata *objectiveCType =
-    bridgeWitness->getObjectiveCType(nativeType, nativeType);
+    bridgeWitness->ObjectiveCType(nativeType, bridgeWitness);
         
   // Check whether we can downcast the source value to the Objective-C
   // type.
@@ -3173,51 +2668,46 @@ swift_bridgeNonVerbatimFromObjectiveCConditional(
   // use conditional bridging.
   return bridgeWitness->conditionallyBridgeFromObjectiveC(
     static_cast<HeapObject*>(sourceValueAsObjectiveCType),
-    destValue, nativeType, nativeType);
+    destValue, nativeType, nativeType, bridgeWitness);
 }
 
 // func isBridgedNonVerbatimToObjectiveC<T>(x: T.Type) -> Bool
+SWIFT_RUNTIME_STDLIB_INTERFACE
 extern "C" bool swift_isBridgedNonVerbatimToObjectiveC(
   const Metadata *value, const Metadata *T
 ) {
-  assert(!swift_isClassOrObjCExistentialImpl(T));
+  assert(!swift_isClassOrObjCExistentialTypeImpl(T));
 
   auto bridgeWitness = findBridgeWitness(T);
-  return bridgeWitness && bridgeWitness->isBridgedToObjectiveC(value, T);
+  return bridgeWitness && bridgeWitness->isBridgedToObjectiveC(value, T,
+                                                               bridgeWitness);
 }
 #endif
 
 // func isClassOrObjCExistential<T>(x: T.Type) -> Bool
-extern "C" bool swift_isClassOrObjCExistential(const Metadata *value,
+SWIFT_RUNTIME_EXPORT
+extern "C" bool swift_isClassOrObjCExistentialType(const Metadata *value,
                                                const Metadata *T) {
-  return swift_isClassOrObjCExistentialImpl(T);
+  return swift_isClassOrObjCExistentialTypeImpl(T);
 }
 
-// func _swift_isClass(x: Any) -> Bool
-extern "C" bool _swift_isClass(OpaqueExistentialContainer *value) {
-  bool Result = Metadata::isAnyKindOfClass(value->Type->getKind());
-
-  // Destroy value->Buffer since the Any is passed in at +1.
-  value->Type->vw_destroyBuffer(&value->Buffer);
-
-  return Result;
-}
-
-// func _swift_getSuperclass_nonNull(_: AnyClass) -> AnyClass?
-extern "C" const Metadata *_swift_getSuperclass_nonNull(
+// func swift_class_getSuperclass(_: AnyClass) -> AnyClass?
+SWIFT_RUNTIME_EXPORT
+extern "C" const Metadata *swift_class_getSuperclass(
   const Metadata *theClass
 ) {
   if (const ClassMetadata *classType = theClass->getClassObject())
-    if (auto super = classType->SuperClass)
-      if (super != getRootSuperclass())
-        return swift_getObjCClassMetadata(super);
+    if (classHasSuperclass(classType))
+      return swift_getObjCClassMetadata(classType->SuperClass);
   return nullptr;
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" bool swift_isClassType(const Metadata *type) {
   return Metadata::isAnyKindOfClass(type->getKind());
 }
 
+SWIFT_RUNTIME_EXPORT
 extern "C" bool swift_isOptionalType(const Metadata *type) {
   return type->getKind() == MetadataKind::Optional;
 }

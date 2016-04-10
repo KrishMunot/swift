@@ -1,8 +1,6 @@
 // RUN: %target-run-simple-swift | FileCheck %s
 // REQUIRES: executable_test
 
-// XFAIL: linux
-
 class C {}
 struct S {}
 enum E {}
@@ -10,9 +8,9 @@ enum E {}
 protocol P {}
 protocol P2 {}
 protocol AssociatedTypes {
-  typealias A
-  typealias B
-  typealias C
+  associatedtype A
+  associatedtype B
+  associatedtype C
 }
 
 class Model : AssociatedTypes {
@@ -32,7 +30,7 @@ struct GS<T : AssociatedTypes> {}
 enum GE<T : AssociatedTypes> {}
 class GC2<T : AssociatedTypes, U : AssociatedTypes> {}
 
-func printTypeName(t: Any.Type) { print(_typeName(t)) }
+func printTypeName(_ t: Any.Type) { print(_typeName(t)) }
 
 printTypeName(Int.self) // CHECK: Swift.Int
 printTypeName(C.self) // CHECK-NEXT: [[THIS:.*]].C
@@ -56,13 +54,21 @@ printTypeName(F.self) // CHECK-NEXT: () -> ()
 printTypeName(F2.self) // CHECK-NEXT: () -> () -> ()
 printTypeName(F3.self) // CHECK-NEXT: (() -> ()) -> ()
 
+#if _runtime(_ObjC)
 typealias B = @convention(block) () -> ()
 typealias B2 = () -> @convention(block) () -> ()
 typealias B3 = (@convention(block) () -> ()) -> ()
-
-printTypeName(B.self) // CHECK-NEXT: @convention(block) () -> ()
-printTypeName(B2.self) // CHECK-NEXT: () -> @convention(block) () -> ()
-printTypeName(B3.self) // CHECK-NEXT: (@convention(block) () -> ()) -> ()
+printTypeName(B.self)
+printTypeName(B2.self)
+printTypeName(B3.self)
+#else
+print("@convention(block) () -> ()")
+print("() -> @convention(block) () -> ()")
+print("(@convention(block) () -> ()) -> ()")
+#endif
+// CHECK-NEXT: @convention(block) () -> ()
+// CHECK-NEXT: () -> @convention(block) () -> ()
+// CHECK-NEXT: (@convention(block) () -> ()) -> ()
 
 printTypeName(F.Type.self) // CHECK-NEXT: (() -> ()).Type
 printTypeName(C.Type.self) // CHECK-NEXT: [[THIS]].C.Type

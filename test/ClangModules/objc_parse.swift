@@ -12,9 +12,9 @@ import ObjCParseExtras
 import ObjCParseExtrasToo
 import ObjCParseExtrasSystem
 
-func markUsed<T>(t: T) {}
+func markUsed<T>(_ t: T) {}
 
-func testAnyObject(obj: AnyObject) {
+func testAnyObject(_ obj: AnyObject) {
   _ = obj.nsstringProperty
 }
 
@@ -24,21 +24,21 @@ func construction() {
 }
 
 // Subtyping
-func treatBAsA(b: B) -> A {
+func treatBAsA(_ b: B) -> A {
   return b
 }
 
 // Instance method invocation
-func instanceMethods(b: B) {
-  var i = b.method(1, withFloat:2.5)
-  i = i + b.method(1, withDouble:2.5)
+func instanceMethods(_ b: B) {
+  var i = b.method(1, with: 2.5 as Float)
+  i = i + b.method(1, with: 2.5 as Double)
 
   // BOOL
   b.setEnabled(true)
 
   // SEL
-  b.performSelector("isEqual:", withObject:b)
-  if let result = b.performSelector("getAsProto", withObject:nil) {
+  b.perform(#selector(NSObject.isEqual(_:)), with: b)
+  if let result = b.perform(#selector(B.getAsProto), with: nil) {
     _ = result.takeUnretainedValue()
   }
 
@@ -57,14 +57,14 @@ func instanceMethods(b: B) {
   var obj = NSObject()
   var prot = NSObjectProtocol.self
   b.`protocol`(prot, hasThing:obj)
-  b.doThing(obj, `protocol`: prot)
+  b.doThing(obj, protocol: prot)
 }
 
 // Class method invocation
-func classMethods(b: B, other: NSObject) {
+func classMethods(_ b: B, other: NSObject) {
   var i = B.classMethod()
   i += B.classMethod(1)
-  i += B.classMethod(1, withInt:2)
+  i += B.classMethod(1, with: 2)
 
   i += b.classMethod() // expected-error{{static member 'classMethod' cannot be used on instance of type 'B'}}
 
@@ -79,34 +79,33 @@ func classMethods(b: B, other: NSObject) {
 }
 
 // Instance method invocation on extensions
-func instanceMethodsInExtensions(b: B) {
+func instanceMethodsInExtensions(_ b: B) {
   b.method(1, onCat1:2.5)
   b.method(1, onExtA:2.5)
   b.method(1, onExtB:2.5)
   b.method(1, separateExtMethod:3.5)
 
-  let m1 = b.method:onCat1:
+  let m1 = b.method(_:onCat1:)
   m1(1, onCat1: 2.5)
 
-  let m2 = b.method:onExtA:
+  let m2 = b.method(_:onExtA:)
   m2(1, onExtA: 2.5)
 
-  let m3 = b.method:onExtB:
+  let m3 = b.method(_:onExtB:)
   m3(1, onExtB: 2.5)
 
-  let m4 = b.method:separateExtMethod:
+  let m4 = b.method(_:separateExtMethod:)
   m4(1, separateExtMethod: 2.5)
 }
 
-func dynamicLookupMethod(b: AnyObject) {
-  // FIXME: Syntax will be replaced.
-  if let m5 = b.method:separateExtMethod: {
+func dynamicLookupMethod(_ b: AnyObject) {
+  if let m5 = b.method(_:separateExtMethod:) {
     m5(1, separateExtMethod: 2.5)
   }
 }
 
 // Properties
-func properties(b: B) {
+func properties(_ b: B) {
   var i = b.counter
   b.counter = i + 1
   i = i + b.readCounter
@@ -137,15 +136,15 @@ func properties(b: B) {
 }
 
 // Construction.
-func newConstruction(a: A, aproxy: AProxy) {
+func newConstruction(_ a: A, aproxy: AProxy) {
   var b : B = B()
   b = B(int: 17)
   b = B(int:17)
   b = B(double:17.5, 3.14159)
-  b = B(BBB:b)
+  b = B(bbb:b)
   b = B(forWorldDomination:())
   b = B(int: 17, andDouble : 3.14159)
-  b = B.newWithA(a)
+  b = B.new(with: a)
   B.alloc()._initFoo()
   b.notAnInit()
 
@@ -157,13 +156,13 @@ func newConstruction(a: A, aproxy: AProxy) {
 }
 
 // Indexed subscripting
-func indexedSubscripting(b: B, idx: Int, a: A) {
+func indexedSubscripting(_ b: B, idx: Int, a: A) {
   b[idx] = a
   _ = b[idx] as! A
 }
 
 // Keyed subscripting
-func keyedSubscripting(b: B, idx: A, a: A) {
+func keyedSubscripting(_ b: B, idx: A, a: A) {
   b[a] = a
   var a2 = b[a] as! A
 
@@ -177,17 +176,17 @@ func keyedSubscripting(b: B, idx: A, a: A) {
 }
 
 // Typed indexed subscripting
-func checkHive(hive: Hive, b: Bee) {
+func checkHive(_ hive: Hive, b: Bee) {
   let b2 = hive.bees[5] as Bee
   b2.buzz()
 }
 
 // Protocols
-func testProtocols(b: B, bp: BProto) {
+func testProtocols(_ b: B, bp: BProto) {
   var bp2 : BProto = b
   var b2 : B = bp // expected-error{{cannot convert value of type 'BProto' to specified type 'B'}}
-  bp.method(1, withFloat:2.5)
-  bp.method(1, withDouble:2.5) // expected-error{{incorrect argument label in call (have '_:withDouble:', expected '_:withFloat:')}} {{16-26=withFloat}}
+  bp.method(1, with: 2.5 as Float)
+  bp.method(1, withFoo: 2.5) // expected-error{{incorrect argument label in call (have '_:withFoo:', expected '_:with:')}}
   bp2 = b.getAsProto()
 
   var c1 : Cat1Proto = b
@@ -197,19 +196,19 @@ func testProtocols(b: B, bp: BProto) {
 }
 
 // Methods only defined in a protocol
-func testProtocolMethods(b: B, p2m: P2.Type) {
-  b.otherMethod(1, withFloat:3.14159)
+func testProtocolMethods(_ b: B, p2m: P2.Type) {
+  b.otherMethod(1, with: 3.14159)
   b.p2Method()
-  b.initViaP2(3.14159, second:3.14159) // expected-error{{value of type 'B' has no member 'initViaP2'}}
+  b.initViaP2(3.14159, second: 3.14159) // expected-error{{value of type 'B' has no member 'initViaP2'}}
 
   // Imported constructor.
-  var b2 = B(viaP2: 3.14159, second:3.14159)
+  var b2 = B(viaP2: 3.14159, second: 3.14159)
 
   p2m.init(viaP2:3.14159, second: 3.14159)
 }
 
-func testId(x: AnyObject) {
-  x.performSelector!("foo:", withObject: x)
+func testId(_ x: AnyObject) {
+  x.perform!("foo:", with: x) // expected-warning{{no method declared with Objective-C selector 'foo:'}}
 
   x.performAdd(1, withValue: 2, withValue: 3, withValue2: 4)
   x.performAdd!(1, withValue: 2, withValue: 3, withValue2: 4)
@@ -224,40 +223,40 @@ class MySubclass : B {
   override func anotherCategoryMethod() {}
 }
 
-func getDescription(array: NSArray) {
+func getDescription(_ array: NSArray) {
   array.description
 }
 
 // Method overriding with unfortunate ordering.
-func overridingTest(srs: SuperRefsSub) {
+func overridingTest(_ srs: SuperRefsSub) {
   let rs : RefedSub
   rs.overridden()
 }
 
-func almostSubscriptableValueMismatch(as1: AlmostSubscriptable, a: A) {
+func almostSubscriptableValueMismatch(_ as1: AlmostSubscriptable, a: A) {
   as1[a] // expected-error{{type 'AlmostSubscriptable' has no subscript members}}
 }
 
-func almostSubscriptableKeyMismatch(bc: BadCollection, key: NSString) {
+func almostSubscriptableKeyMismatch(_ bc: BadCollection, key: NSString) {
   // FIXME: We end up importing this as read-only due to the mismatch between
   // getter/setter element types.
   var _ : AnyObject = bc[key]
 }
 
-func almostSubscriptableKeyMismatchInherited(bc: BadCollectionChild,
+func almostSubscriptableKeyMismatchInherited(_ bc: BadCollectionChild,
                                              key: String) {
   var value : AnyObject = bc[key] // no-warning, inherited from parent
   bc[key] = value // expected-error{{cannot assign through subscript: subscript is get-only}}
 }
 
-func almostSubscriptableKeyMismatchInherited(roc: ReadOnlyCollectionChild,
+func almostSubscriptableKeyMismatchInherited(_ roc: ReadOnlyCollectionChild,
                                              key: String) {
   var value : AnyObject = roc[key] // no-warning, inherited from parent
   roc[key] = value // expected-error{{cannot assign through subscript: subscript is get-only}}
 }
 
 // Use of 'Class' via dynamic lookup.
-func classAnyObject(obj: NSObject) {
+func classAnyObject(_ obj: NSObject) {
   obj.myClass().description!()
 }
 
@@ -279,32 +278,32 @@ extension Wobbler : NSMaybeInitWobble { // expected-error{{type 'Wobbler' does n
 extension Wobbler2 : NSMaybeInitWobble { // expected-error{{type 'Wobbler2' does not conform to protocol 'NSMaybeInitWobble'}}
 }
 
-func optionalMemberAccess(w: NSWobbling) {
+func optionalMemberAccess(_ w: NSWobbling) {
   w.wobble()
   w.wibble() // expected-error{{value of optional type '(() -> Void)?' not unwrapped; did you mean to use '!' or '?'?}} {{11-11=!}}
   var x: AnyObject = w[5] // expected-error{{value of optional type 'AnyObject!?' not unwrapped; did you mean to use '!' or '?'?}} {{26-26=!}}
 }
 
-func protocolInheritance(s: NSString) {
+func protocolInheritance(_ s: NSString) {
   var _: NSCoding = s
 }
 
-func ivars(hive: Hive) {
+func ivars(_ hive: Hive) {
   var d = hive.bees.description
   hive.queen.description() // expected-error{{value of type 'Hive' has no member 'queen'}}
 }
 
 class NSObjectable : NSObjectProtocol {
   @objc var description : String { return "" }
-  @objc func conformsToProtocol(_: Protocol) -> Bool { return false }
-  @objc func isKindOfClass(aClass: AnyClass) -> Bool { return false }
+  @objc(conformsToProtocol:) func conforms(to _: Protocol) -> Bool { return false }
+  @objc(isKindOfClass:) func isKind(of aClass: AnyClass) -> Bool { return false }
 }
 
 
 // Properties with custom accessors
-func customAccessors(hive: Hive, bee: Bee) {
-  markUsed(hive.makingHoney)
-  markUsed(hive.isMakingHoney()) // expected-error{{value of type 'Hive' has no member 'isMakingHoney'}}
+func customAccessors(_ hive: Hive, bee: Bee) {
+  markUsed(hive.isMakingHoney)
+  markUsed(hive.makingHoney()) // expected-error{{value of type 'Hive' has no member 'makingHoney'}}
   hive.setMakingHoney(true) // expected-error{{value of type 'Hive' has no member 'setMakingHoney'}}
 
   hive.`guard`.description // okay
@@ -313,7 +312,7 @@ func customAccessors(hive: Hive, bee: Bee) {
 }
 
 // instancetype/Dynamic Self invocation.
-func testDynamicSelf(queen: Bee, wobbler: NSWobbling) {
+func testDynamicSelf(_ queen: Bee, wobbler: NSWobbling) {
   var hive = Hive()
 
   // Factory method with instancetype result.
@@ -338,7 +337,7 @@ func testDynamicSelf(queen: Bee, wobbler: NSWobbling) {
   let baseClass: ObjCParseExtras.Base.Type = ObjCParseExtras.Base.returnMyself() // expected-error{{missing argument for parameter #1 in call}}
 }
 
-func testRepeatedProtocolAdoption(w: NSWindow) {
+func testRepeatedProtocolAdoption(_ w: NSWindow) {
   w.description
 }
 
@@ -367,7 +366,7 @@ class ProtocolAdopterBad3 : FooProto { // expected-error{{type 'ProtocolAdopterB
 
 @objc protocol RefinedFooProtocol : FooProto {}
 
-func testPreferClassMethodToCurriedInstanceMethod(obj: NSObject) {
+func testPreferClassMethodToCurriedInstanceMethod(_ obj: NSObject) {
   // FIXME: We shouldn't need the ": Bool" type annotation here.
   // <rdar://problem/18006008>
   let _: Bool = NSObject.isEqual(obj)
@@ -375,20 +374,29 @@ func testPreferClassMethodToCurriedInstanceMethod(obj: NSObject) {
 }
 
 
-func testPropertyAndMethodCollision(obj: PropertyAndMethodCollision,
+func testPropertyAndMethodCollision(_ obj: PropertyAndMethodCollision,
                                     rev: PropertyAndMethodReverseCollision) {
   obj.object = nil
-  obj.object(obj, doSomething:"action")
+  obj.object(obj, doSomething:Selector("action"))
+
+  obj.dynamicType.classRef = nil
+  obj.dynamicType.classRef(obj, doSomething:Selector("action"))
 
   rev.object = nil
-  rev.object(rev, doSomething:"action")
+  rev.object(rev, doSomething:Selector("action"))
 
-  var value: AnyObject = obj.protoProp()
+  rev.dynamicType.classRef = nil
+  rev.dynamicType.classRef(rev, doSomething:Selector("action"))
+
+  var value: AnyObject
+  value = obj.protoProp()
   value = obj.protoPropRO()
+  value = obj.dynamicType.protoClassProp()
+  value = obj.dynamicType.protoClassPropRO()
   _ = value
 }
 
-func testSubscriptAndPropertyRedeclaration(obj: SubscriptAndProperty) {
+func testSubscriptAndPropertyRedeclaration(_ obj: SubscriptAndProperty) {
   _ = obj.x
   obj.x = 5
   obj.objectAtIndexedSubscript(5) // expected-error{{'objectAtIndexedSubscript' is unavailable: use subscripting}}
@@ -399,7 +407,7 @@ func testSubscriptAndPropertyRedeclaration(obj: SubscriptAndProperty) {
   obj.setObject(obj, atIndexedSubscript: 2) // expected-error{{'setObject(_:atIndexedSubscript:)' is unavailable: use subscripting}}
 }
 
-func testSubscriptAndPropertyWithProtocols(obj: SubscriptAndPropertyWithProto) {
+func testSubscriptAndPropertyWithProtocols(_ obj: SubscriptAndPropertyWithProto) {
   _ = obj.x
   obj.x = 5
   obj.setX(5) // expected-error{{value of type 'SubscriptAndPropertyWithProto' has no member 'setX'}}
@@ -409,13 +417,13 @@ func testSubscriptAndPropertyWithProtocols(obj: SubscriptAndPropertyWithProto) {
   obj.setObject(obj, atIndexedSubscript: 2) // expected-error{{'setObject(_:atIndexedSubscript:)' is unavailable: use subscripting}}
 }
 
-func testProtocolMappingSameModule(obj: AVVideoCompositionInstruction, p: AVVideoCompositionInstructionProtocol) {
+func testProtocolMappingSameModule(_ obj: AVVideoCompositionInstruction, p: AVVideoCompositionInstructionProtocol) {
   markUsed(p.enablePostProcessing)
   markUsed(obj.enablePostProcessing)
   _ = obj.backgroundColor
 }
 
-func testProtocolMappingDifferentModules(obj: ObjCParseExtrasToo.ProtoOrClass, p: ObjCParseExtras.ProtoOrClass) {
+func testProtocolMappingDifferentModules(_ obj: ObjCParseExtrasToo.ProtoOrClass, p: ObjCParseExtras.ProtoOrClass) {
   markUsed(p.thisIsTheProto)
   markUsed(obj.thisClassHasAnAwfulName)
 
@@ -427,13 +435,13 @@ func testProtocolMappingDifferentModules(obj: ObjCParseExtrasToo.ProtoOrClass, p
   _ = ObjCParseExtrasTooHelper.ProtoInHelper() // expected-error{{'ProtoInHelper' cannot be constructed because it has no accessible initializers}}
 }
 
-func testProtocolClassShadowing(obj: ClassInHelper, p: ProtoInHelper) {
+func testProtocolClassShadowing(_ obj: ClassInHelper, p: ProtoInHelper) {
   let _: ObjCParseExtrasToo.ClassInHelper = obj
   let _: ObjCParseExtrasToo.ProtoInHelper = p
 }
 
 
-func testDealloc(obj: NSObject) {
+func testDealloc(_ obj: NSObject) {
   // dealloc is subsumed by deinit.
   // FIXME: Special-case diagnostic in the type checker?
   obj.dealloc() // expected-error{{value of type 'NSObject' has no member 'dealloc'}}
@@ -457,7 +465,7 @@ class IncompleteProtocolAdopter : Incomplete, IncompleteOptional { // expected-e
   @objc func getObject() -> AnyObject { return self }
 }
 
-func testNullarySelectorPieces(obj: AnyObject) {
+func testNullarySelectorPieces(_ obj: AnyObject) {
   obj.foo(1, bar: 2, 3) // no-warning
   obj.foo(1, 2, bar: 3) // expected-error{{cannot call value of non-function type 'AnyObject?!'}}
 }
@@ -466,16 +474,16 @@ func testFactoryMethodAvailability() {
   _ = DeprecatedFactoryMethod() // expected-warning{{'init()' is deprecated: use something newer}}
 }
 
-func testRepeatedMembers(obj: RepeatedMembers) {
+func testRepeatedMembers(_ obj: RepeatedMembers) {
   obj.repeatedMethod()
 }
 
 // rdar://problem/19726164
 class FooDelegateImpl : NSObject, FooDelegate {
   var _started = false
-  var started: Bool {
-    @objc(isStarted) get { return _started }
-    set { _started = newValue }
+  var isStarted: Bool {
+    get { return _started }
+    @objc(setStarted:) set { _started = newValue }
   }
 }
 
@@ -484,7 +492,7 @@ class ProtoAdopter : NSObject, ExplicitSetterProto, OptionalSetterProto {
   var bar: AnyObject? // no errors about conformance
 }
 
-func testUnusedResults(ur: UnusedResults) {
+func testUnusedResults(_ ur: UnusedResults) {
   _ = ur.producesResult()
   ur.producesResult() // expected-warning{{result of call to 'producesResult()' is unused}}
 }
@@ -493,7 +501,7 @@ func testCStyle() {
   ExtraSelectors.cStyle(0, 1, 2) // expected-error{{type 'ExtraSelectors' has no member 'cStyle'}}
 }
 
-func testProtocolQualified(obj: CopyableNSObject, cell: CopyableSomeCell,
+func testProtocolQualified(_ obj: CopyableNSObject, cell: CopyableSomeCell,
                            plainObj: NSObject, plainCell: SomeCell) {
   _ = obj as NSObject // expected-error {{'CopyableNSObject' (aka 'protocol<NSCopying, NSObjectProtocol>') is not convertible to 'NSObject'; did you mean to use 'as!' to force downcast?}} {{11-13=as!}}
   _ = obj as NSObjectProtocol
@@ -544,7 +552,7 @@ func testSetInitializers() {
 }
 
 
-func testNSUInteger(obj: NSUIntegerTests, uint: UInt, int: Int) {
+func testNSUInteger(_ obj: NSUIntegerTests, uint: UInt, int: Int) {
   obj.consumeUnsigned(uint) // okay
   obj.consumeUnsigned(int) // expected-error {{cannot convert value of type 'Int' to expected argument type 'UInt'}}
 
@@ -584,7 +592,11 @@ func testNSUInteger(obj: NSUIntegerTests, uint: UInt, int: Int) {
   }
 
   // NSNumber
-  NSNumber(unsignedInteger: int) // expected-error {{cannot convert value of type 'Int' to expected argument type 'UInt'}}
-  let num = NSNumber(unsignedInteger: uint)
-  let _: String = num.unsignedIntegerValue // expected-error {{cannot convert value of type 'UInt' to specified type 'String'}}
+  let num = NSNumber(value: uint)
+  let _: String = num.uintValue // expected-error {{cannot convert value of type 'UInt' to specified type 'String'}}
 }
+
+
+// <rdar://problem/25168818> Don't import None members in NS_OPTIONS types
+let _ = NSRuncingOptions.none // expected-error {{'none' is unavailable: use [] to construct an empty option set}}
+

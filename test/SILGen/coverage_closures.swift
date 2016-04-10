@@ -1,12 +1,12 @@
-// RUN: %target-swift-frontend -profile-generate -profile-coverage-mapping -emit-sorted-sil -emit-sil -module-name coverage_closures %s | FileCheck %s
+// RUN: %target-swift-frontend -Xllvm -sil-full-demangle -profile-generate -profile-coverage-mapping -emit-sorted-sil -emit-sil -module-name coverage_closures %s | FileCheck %s
 
 // CHECK-LABEL: sil_coverage_map {{.*}}// coverage_closures.foo
 func foo() {
   // CHECK: [[@LINE+1]]:12 -> [[@LINE+1]]:59 : 1
   let c1 = { (i1 : Int32, i2 : Int32) -> Bool in i1 < i2 }
 
-  func f1(closure : (Int32, Int32) -> Bool) -> Bool {
-    // CHECK: [[@LINE-1]]:53 -> [[@LINE+3]]:4 : 2
+  func f1(_ closure : (Int32, Int32) -> Bool) -> Bool {
+    // CHECK: [[@LINE-1]]:55 -> [[@LINE+3]]:4 : 2
     // CHECK: [[@LINE+1]]:29 -> [[@LINE+1]]:42 : 3
     return closure(0, 1) && closure(1, 0)
   }

@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -use-native-super-method -sdk %S/Inputs -I %S/Inputs -enable-source-import %s -emit-silgen | FileCheck %s
+// RUN: %target-swift-frontend -sdk %S/Inputs -I %S/Inputs -enable-source-import %s -emit-silgen | FileCheck %s
 
 // REQUIRES: objc_interop
 
@@ -14,7 +14,7 @@ class Hoozit : Gizmo {
     super.init()
   }
 
-  // CHECK-LABEL: sil hidden  @_TZFC10objc_super6Hoozit5runce{{.*}} : $@convention(thin) (@thick Hoozit.Type) -> ()
+  // CHECK-LABEL: sil hidden  @_TZFC10objc_super6Hoozit5runce{{.*}} : $@convention(method) (@thick Hoozit.Type) -> ()
   override class func runce() {
     // CHECK: super_method [volatile] {{%.*}} : $@thick Hoozit.Type, #Gizmo.runce!1.foreign
     super.runce()
@@ -42,7 +42,7 @@ class Wotsit : Hoozit {
 class NonObjCSuperInit : Wotsit {
   // CHECK-LABEL: sil hidden @_TFC10objc_super16NonObjCSuperInitc{{.*}} : $@convention(method) (@owned NonObjCSuperInit) -> @owned NonObjCSuperInit
   init() {
-    // CHECK: super_method {{%[0-9]+}} : $NonObjCSuperInit, #Wotsit.init!initializer.1 : Wotsit.Type -> (nope: NotInObjC<Int>) -> Wotsit , $@convention(method) (NotInObjC<Int>, @owned Wotsit) -> @owned Wotsit
+    // CHECK: function_ref @_TFV10objc_super9NotInObjCCfT_GS0_x_ : $@convention(method) <τ_0_0> (@thin NotInObjC<τ_0_0>.Type) -> NotInObjC<τ_0_0>
     super.init(nope: NotInObjC<Int>())
   }
 }

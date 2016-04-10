@@ -1,7 +1,7 @@
 // RUN: %target-swift-frontend %s -emit-ir -g -o - | FileCheck %s
 
 protocol AProtocol {
-  func f() -> String;
+  func f() -> String
 }
 class AClass : AProtocol {
   func f() -> String { return "A" }
@@ -15,7 +15,7 @@ class AClass : AProtocol {
 // CHECK-SAME:                            flags: DIFlagArtificial
 // CHECK: ![[SWIFTMETATYPE]] = !DIDerivedType(tag: DW_TAG_typedef, name: "$swift.type",
 // CHECK-SAME:                                baseType: ![[VOIDPTR]]
-func aFunction<T : AProtocol>(x: T) {
+func aFunction<T : AProtocol>(_ x: T) {
     print("I am in aFunction: \(x.f())")
 }
 
@@ -26,8 +26,9 @@ class Foo<Bar> {
       func one() {
       }
 
-      func two<Baz>(x: Baz) {
-    // CHECK: !DILocalVariable(name: "$swift.type.Bar"
+      func two<Baz>(_ x: Baz) {
+    // TODO: leave breadcrumbs for how to dynamically derive T in the debugger
+    // CHECK- FIXME: !DILocalVariable(name: "$swift.type.Bar"
     // CHECK: !DILocalVariable(name: "$swift.type.Baz"
       }
 }
@@ -37,5 +38,5 @@ class Foo<Bar> {
 // RUN: llvm-dwarfdump %t.o | FileCheck %s --check-prefix=CHECK-LLVM
 // CHECK-LLVM-DAG:  .debug_str[{{.*}}] = "x"
 // CHECK-LLVM-DAG:  .debug_str[{{.*}}] = "$swift.type.T"
-// CHECK-LLVM-DAG:  .debug_str[{{.*}}] = "$swift.type.Bar"
+// CHECK- FIXME -LLVM-DAG:  .debug_str[{{.*}}] = "$swift.type.Bar"
 // CHECK-LLVM-DAG:  .debug_str[{{.*}}] = "$swift.type.Baz"

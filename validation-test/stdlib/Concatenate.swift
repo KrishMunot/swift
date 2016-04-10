@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -13,6 +13,7 @@
 // REQUIRES: executable_test
 
 import StdlibUnittest
+
 
 var ConcatenateTests = TestSuite("ConcatenateTests")
 
@@ -39,8 +40,8 @@ for (expected, source) in samples {
   ConcatenateTests.test("reverse-\(source)") {
     // FIXME: separate 'expected' and 'reversed' variables are a workaround
     // for: <rdar://problem/20789500>
-    let expected = ContiguousArray(expected.lazy.reverse())
-    let reversed = source.flatten().reverse()
+    let expected = ContiguousArray(expected.lazy.reversed())
+    let reversed = source.flatten().reversed()
     checkBidirectionalCollection(expected, reversed)
   }
 

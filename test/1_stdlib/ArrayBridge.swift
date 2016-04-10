@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -19,11 +19,20 @@
 // RUN: %target-run %t/ArrayBridge > %t.txt
 // RUN: FileCheck %s < %t.txt
 // REQUIRES: executable_test
-
-// XFAIL: linux
+// REQUIRES: objc_interop
 
 import Foundation
 import ArrayBridgeObjC
+
+// FIXME: Should go into the standard library.
+public extension _ObjectiveCBridgeable {
+  static func _unconditionallyBridgeFromObjectiveC(_ source: _ObjectiveCType?)
+      -> Self {
+    var result: Self? = nil
+    _forceBridgeFromObjectiveC(source!, result: &result)
+    return result!
+  }
+}
 
 // CHECK: testing...
 print("testing...")
@@ -47,14 +56,15 @@ class Tracked : NSObject, Fooable {
   func foo() { }
 
   required init(_ value: Int) {
-    ++trackedCount
-    serialNumber = ++nextTrackedSerialNumber
+    trackedCount += 1
+    nextTrackedSerialNumber += 1
+    serialNumber = nextTrackedSerialNumber
     self.value = value
   }
   
   deinit {
     assert(serialNumber > 0, "double destruction!")
-    --trackedCount
+    trackedCount -= 1
     serialNumber = -serialNumber
   }
 
@@ -97,12 +107,8 @@ var bridgeFromOperationCount = 0
 var bridgeToOperationCount = 0
 
 struct BridgedSwift : CustomStringConvertible, _ObjectiveCBridgeable {
-  static func _getObjectiveCType() -> Any.Type {
-    return BridgedObjC.self
-  }
-  
   func _bridgeToObjectiveC() -> BridgedObjC {
-    ++bridgeToOperationCount
+    bridgeToOperationCount += 1
     return BridgedObjC(trak.value)
   }
 
@@ -111,17 +117,17 @@ struct BridgedSwift : CustomStringConvertible, _ObjectiveCBridgeable {
   }
 
   static func _forceBridgeFromObjectiveC(
-    x: BridgedObjC,
-    inout result: BridgedSwift?
+    _ x: BridgedObjC,
+    result: inout BridgedSwift?
   ) {
     assert(x.value >= 0, "not bridged")
-    ++bridgeFromOperationCount
+    bridgeFromOperationCount += 1
     result = BridgedSwift(x.value)
   }
 
   static func _conditionallyBridgeFromObjectiveC(
-    x: BridgedObjC,
-    inout result: BridgedSwift?
+    _ x: BridgedObjC,
+    result: inout BridgedSwift?
   ) -> Bool {
     if x.value >= 0 {
       result = BridgedSwift(x.value)
@@ -161,15 +167,15 @@ struct BridgedSwift : CustomStringConvertible, _ObjectiveCBridgeable {
 
 // A class used to test various Objective-C thunks.
 class Thunks : NSObject {
-  func createBridgedObjC(value: Int) -> AnyObject {
+  func createBridgedObjC(_ value: Int) -> AnyObject {
     return BridgedObjC(value)
   }
   
-  @objc func acceptBridgedObjCArray(x: [BridgedObjC]) {
+  @objc func acceptBridgedObjCArray(_ x: [BridgedObjC]) {
     print("acceptBridgedObjCArray(\(x))")
   }
 
-  @objc func produceBridgedObjCArray(numItems: Int) -> [BridgedObjC] {
+  @objc func produceBridgedObjCArray(_ numItems: Int) -> [BridgedObjC] {
     var array: [BridgedObjC] = []
     for i in 0..<numItems {
       array.append(BridgedObjC(i))
@@ -178,12 +184,12 @@ class Thunks : NSObject {
     return array
   }
 
-  @objc func acceptBridgedSwiftArray(raw: NSArray) {
+  @objc func acceptBridgedSwiftArray(_ raw: NSArray) {
     let x = raw as! [BridgedSwift]
     print("acceptBridgedSwiftArray(\(x))")
   }
 
-  @objc func produceBridgedSwiftArray(numItems: Int) -> NSArray {
+  @objc func produceBridgedSwiftArray(_ numItems: Int) -> NSArray {
     var array: [BridgedSwift] = []
     for i in 0..<numItems {
       array.append(BridgedSwift(i))
@@ -205,7 +211,7 @@ func testBridgedVerbatim() {
 
   // CHECK-NEXT: Base#1(100)
   let basesConvertedToNSArray = bases as NSArray
-  print(basesConvertedToNSArray.objectAtIndex(0) as! Base)
+  print(basesConvertedToNSArray.object(at: 0) as! Base)
 
   // Create an ordinary NSArray, not a native one
   let nsArrayOfBase: NSArray = NSArray(object: Base(42))
@@ -215,7 +221,7 @@ func testBridgedVerbatim() {
 
   // Capture the representation of the first element
   // CHECK-NEXT: [[base42:Base.*42]]
-  print(nsArrayOfBase.objectAtIndex(0) as! Base)
+  print(nsArrayOfBase.object(at: 0) as! Base)
 
   // ...with the same elements
   // CHECK-NEXT: [[base42]]
@@ -345,7 +351,7 @@ func testExplicitlyBridged() {
   let roundTripBridgedSwifts
     = Swift._forceBridgeFromObjectiveC(bridgedSwiftsAsNSArray, 
                                        [BridgedSwift].self)
-  // CHECK-NEXT-NOT: [BridgedSwift#[[id00]](42), BridgedSwift#[[id01]](17)]
+  // CHECK-NOT: [BridgedSwift#[[id00]](42), BridgedSwift#[[id01]](17)]
   // CHECK-NEXT: [BridgedSwift#[[id10:[0-9]+]](42), BridgedSwift#[[id11:[0-9]+]](17)]
   print("roundTripBridgedSwifts = \(roundTripBridgedSwifts))")
 
@@ -355,12 +361,12 @@ func testExplicitlyBridged() {
   // ...and bridge *that* back
   let bridgedBackSwifts
     = Swift._forceBridgeFromObjectiveC(cocoaBridgedSwifts, [BridgedSwift].self)
-  // CHECK-NEXT-NOT: [BridgedSwift#[[id00]](42), BridgedSwift#[[id01]](17)]
-  // CHECK-NEXT-NOT: [BridgedSwift#[[id10]](42), BridgedSwift#[[id11]](17)]
+  // CHECK-NOT: [BridgedSwift#[[id00]](42), BridgedSwift#[[id01]](17)]
+  // CHECK-NOT: [BridgedSwift#[[id10]](42), BridgedSwift#[[id11]](17)]
   // CHECK-NEXT: [BridgedSwift#{{[0-9]+}}(42), BridgedSwift#{{[0-9]+}}(17)]
   print("bridgedBackSwifts      = \(bridgedBackSwifts)")
   
-  // all: verbatim,  not, and doesn't bridge
+  // all: verbatim, not, and doesn't bridge
   // implicit conversions to/from NSArray 
   // [Base] -> [Derived] and [Derived] -> [Base] where Base can be AnyObject
   // defining @objc method taking [T] and returning [T]
@@ -385,7 +391,7 @@ func testExplicitlyBridged() {
   print(bridgedSwiftsAsAnyObjects[1])
 
   // Downcasts of non-verbatim bridged value types to objects.
-  if true {
+  do {
     let downcasted = bridgedSwifts as [BridgedObjC]
     // CHECK-NEXT: BridgedObjC#[[ID0:[0-9]+]](42)
     print(downcasted[0])
@@ -393,7 +399,7 @@ func testExplicitlyBridged() {
     print(downcasted[1])
   }
 
-  if true {
+  do {
     let downcasted = bridgedSwifts as [Base]
     // CHECK-NEXT: BridgedObjC#[[ID0:[0-9]+]](42)
     print(downcasted[0])
@@ -401,7 +407,7 @@ func testExplicitlyBridged() {
     print(downcasted[1])
   }
 
-  if true {
+  do {
     let downcasted = bridgedSwifts as [AnyObject]
     // CHECK-NEXT: BridgedObjC#[[ID0:[0-9]+]](42)
     print(downcasted[0])
@@ -512,7 +518,7 @@ testExplicitlyBridged()
 
 func testRoundTrip() {
   class Test : NSObject {
-    @objc dynamic func call(array: NSArray) -> NSArray {
+    @objc dynamic func call(_ array: NSArray) -> NSArray {
 
       // CHECK-NEXT: ---Passed array---
       print("---Passed array---")
@@ -527,10 +533,10 @@ func testRoundTrip() {
     }
   }
   
-  var test = Test()
+  let test = Test()
   
   let array = [
-    BridgedSwift(10), BridgedSwift(20),  BridgedSwift(30),
+    BridgedSwift(10), BridgedSwift(20), BridgedSwift(30),
     BridgedSwift(40), BridgedSwift(50) ]
   
   BridgedSwift.resetStats()
@@ -551,14 +557,14 @@ struct X {}
 /*
 let x: NSArray = arrayAsID(bases)!
 
-print(x.objectAtIndex(0) as Base)
+print(x.objectAt(0) as Base)
 */
 
 func testMutableArray() {
-  var m = NSMutableArray(array: ["fu", "bar", "buzz"])
+  let m = NSMutableArray(array: ["fu", "bar", "buzz"])
   let a = m as NSArray as! [NSString]
   print(a) // CHECK-NEXT: [fu, bar, buzz]
-  m.addObject("goop")
+  m.add("goop")
   print(a) // CHECK-NEXT: [fu, bar, buzz]
 }
 testMutableArray()

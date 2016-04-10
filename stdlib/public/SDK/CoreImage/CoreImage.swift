@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -21,10 +21,10 @@ extension CIFilter {
 #if os(OSX)
   // - (CIImage *)apply:(CIKernel *)k, ...
   // @objc(apply:arguments:options:)
-  // func apply(k: CIKernel,
+  // func apply(_ k: CIKernel,
   //            arguments args: [AnyObject]?,
   //            options dict: Dictionary<NSObject, AnyObject>?) -> CIImage?
-  func apply(k: CIKernel, args: [AnyObject], options: (String, AnyObject)...) -> CIImage? {
+  func apply(_ k: CIKernel, args: [AnyObject], options: (String, AnyObject)...) -> CIImage? {
     var dict: [String : AnyObject] = [:]
     for (key, value) in options {
       dict[key] = value
@@ -33,8 +33,8 @@ extension CIFilter {
   }
 #endif
 
-  @available(iOS, introduced=8.0)
-  @available(OSX, introduced=10.10)
+  @available(iOS, introduced: 8.0)
+  @available(OSX, introduced: 10.10)
   convenience init?(
     name: String!, elements: (String, AnyObject)...
   ) {

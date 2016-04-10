@@ -10,17 +10,10 @@
 
 import StdlibUnittest
 
-// Also import modules which are used by StdlibUnittest internally. This
-// workaround is needed to link all required libraries in case we compile
-// StdlibUnittest with -sil-serialize-all.
-import SwiftPrivate
-#if _runtime(_ObjC)
-import ObjectiveC
-#endif
 
 %{
 
-from SwiftIntTypes import *
+from SwiftIntTypes import all_integer_types
 
 # Test cases are written in a way that they don't depend on the word size.
 word_bits = 4
@@ -38,7 +31,7 @@ extension Float80 {
 }
 #endif
 
-func getInfiniteOrNaNMessage(floatType: String) -> String {
+func getInfiniteOrNaNMessage(_ floatType: String) -> String {
   // FIXME: <rdar://problem/17958458> Int(Float80.quietNaN) is garbage
   if floatType == "Float80" {
     return ""
@@ -74,13 +67,13 @@ var FloatingPointConversion = TestSuite("FloatingPointConversion")
 %     end
 
 FloatingPointConversion.test("${FloatSelf}/${IntSelf}/+inf")
-  .xfail(.Custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
+  .xfail(.custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
   .crashOutputMatches(getInfiniteOrNaNMessage("${FloatSelf}")).code {
-  if true {
+  do {
     var a = get${IntSelf}(${IntSelf}(get${FloatSelf}(0.0)))
     expectEqual(0, a)
   }
-  if true {
+  do {
     var a = get${IntSelf}(${IntSelf}(get${FloatSelf}(123.0)))
     expectEqual(123, a)
   }
@@ -92,13 +85,13 @@ FloatingPointConversion.test("${FloatSelf}/${IntSelf}/+inf")
 %     if int_ty.is_signed:
 
 FloatingPointConversion.test("${FloatSelf}/${IntSelf}/-inf")
-  .xfail(.Custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
+  .xfail(.custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
   .crashOutputMatches(getInfiniteOrNaNMessage("${FloatSelf}")).code {
-  if true {
+  do {
     var a = get${IntSelf}(${IntSelf}(get${FloatSelf}(-0.0)))
     expectEqual(0, a)
   }
-  if true {
+  do {
     var a = get${IntSelf}(${IntSelf}(get${FloatSelf}(-123.0)))
     expectEqual(-123, a)
   }
@@ -110,14 +103,14 @@ FloatingPointConversion.test("${FloatSelf}/${IntSelf}/-inf")
 %     else:
 
 FloatingPointConversion.test("${FloatSelf}/${IntSelf}/negative")
-  .xfail(.Custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
+  .xfail(.custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
   .crashOutputMatches(getTooSmallMessage()).code {
   expectCrashLater()
   get${IntSelf}(${IntSelf}(get${FloatSelf}(-123.0)))
 }
 
 FloatingPointConversion.test("${FloatSelf}/${IntSelf}/-inf")
-  .xfail(.Custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
+  .xfail(.custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
   .crashOutputMatches(getInfiniteOrNaNMessage("${FloatSelf}")).code {
   expectCrashLater()
   get${IntSelf}(${IntSelf}(get${FloatSelf}(-${FloatSelf}.infinity)))
@@ -126,7 +119,7 @@ FloatingPointConversion.test("${FloatSelf}/${IntSelf}/-inf")
 %     end
 
 FloatingPointConversion.test("${FloatSelf}/${IntSelf}/NaN")
-  .xfail(.Custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
+  .xfail(.custom({ "${FloatSelf}" == "Float80" }, reason: "<rdar://problem/17958458> Int(Float80.quietNaN) is garbage"))
   .crashOutputMatches(getInfiniteOrNaNMessage("${FloatSelf}")).code {
   expectCrashLater()
   get${IntSelf}(${IntSelf}(get${FloatSelf}(${FloatSelf}.quietNaN)))

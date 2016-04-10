@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -12,7 +12,7 @@
 
 %{
 
-from SwiftIntTypes import *
+from SwiftIntTypes import all_integer_types
 
 # Number of bits in the Builtin.Word type
 word_bits = int(CMAKE_SIZEOF_VOID_P) * 8
@@ -21,46 +21,24 @@ word_bits = int(CMAKE_SIZEOF_VOID_P) * 8
 
 /// The set of possible IEEE 754 "classes"
 public enum FloatingPointClassification {
-  case SignalingNaN
-  case QuietNaN
-  case NegativeInfinity
-  case NegativeNormal
-  case NegativeSubnormal
-  case NegativeZero
-  case PositiveZero
-  case PositiveSubnormal
-  case PositiveNormal
-  case PositiveInfinity
-}
-
-extension FloatingPointClassification : Equatable {}
-
-public 
-func ==(lhs: FloatingPointClassification, rhs: FloatingPointClassification) -> Bool {
-  switch (lhs, rhs) {
-  case (.SignalingNaN, .SignalingNaN),
-       (.QuietNaN, .QuietNaN),
-       (.NegativeInfinity, .NegativeInfinity),
-       (.NegativeNormal, .NegativeNormal),
-       (.NegativeSubnormal, .NegativeSubnormal),
-       (.NegativeZero, .NegativeZero),
-       (.PositiveZero, .PositiveZero),
-       (.PositiveSubnormal, .PositiveSubnormal),
-       (.PositiveNormal, .PositiveNormal),
-       (.PositiveInfinity, .PositiveInfinity):
-    return true
-
-  default:
-    return false
-  }
+  case signalingNaN
+  case quietNaN
+  case negativeInfinity
+  case negativeNormal
+  case negativeSubnormal
+  case negativeZero
+  case positiveZero
+  case positiveSubnormal
+  case positiveNormal
+  case positiveInfinity
 }
 
 /// A set of common requirements for Swift's floating point types.
-public protocol FloatingPointType : Strideable {
-  typealias _BitsType
+public protocol FloatingPoint : Strideable {
+  associatedtype _BitsType
 
   @warn_unused_result
-  static func _fromBitPattern(bits: _BitsType) -> Self
+  static func _fromBitPattern(_ bits: _BitsType) -> Self
 
   @warn_unused_result
   func _toBitPattern() -> _BitsType
@@ -76,7 +54,7 @@ public protocol FloatingPointType : Strideable {
   static var infinity: Self { get }
 
   /// A quiet NaN.
-  static var NaN: Self { get }
+  static var nan: Self { get }
 
   /// A quiet NaN.
   static var quietNaN: Self { get }
@@ -118,3 +96,6 @@ public protocol FloatingPointType : Strideable {
   // Binary floating point numbers are always canonical.
   // func isCanonical() -> Bool
 }
+
+@available(*, unavailable, renamed: "FloatingPoint")
+public typealias FloatingPointType = FloatingPoint

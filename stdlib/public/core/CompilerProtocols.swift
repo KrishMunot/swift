@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -14,14 +14,14 @@
 
 /// A type that represents a Boolean value.
 ///
-/// Types that conform to the `BooleanType` protocol can be used as
+/// Types that conform to the `Boolean` protocol can be used as
 /// the condition in control statements (`if`, `while`, C-style `for`)
 /// and other logical value contexts (e.g., `case` statement guards).
 ///
 /// Only three types provided by Swift, `Bool`, `DarwinBoolean`, and `ObjCBool`,
-/// conform to `BooleanType`. Expanding this set to include types that
+/// conform to `Boolean`. Expanding this set to include types that
 /// represent more than simple boolean values is discouraged.
-public protocol BooleanType {
+public protocol Boolean {
   /// The value of `self`, expressed as a `Bool`.
   var boolValue: Bool { get }
 }
@@ -34,7 +34,7 @@ public protocol RawRepresentable {
   /// Every distinct value of `self` has a corresponding unique
   /// value of `RawValue`, but `RawValue` may have representations
   /// that do not correspond to a value of `Self`.
-  typealias RawValue
+  associatedtype RawValue
 
   /// Convert from a value of `RawValue`, yielding `nil` iff
   /// `rawValue` does not correspond to a value of `Self`.
@@ -84,7 +84,7 @@ public protocol _BuiltinIntegerLiteralConvertible {
 
 /// Conforming types can be initialized with integer literals.
 public protocol IntegerLiteralConvertible {
-  typealias IntegerLiteralType : _BuiltinIntegerLiteralConvertible
+  associatedtype IntegerLiteralType : _BuiltinIntegerLiteralConvertible
   /// Create an instance initialized to `value`.
   init(integerLiteral value: IntegerLiteralType)
 }
@@ -95,7 +95,7 @@ public protocol _BuiltinFloatLiteralConvertible {
 
 /// Conforming types can be initialized with floating point literals.
 public protocol FloatLiteralConvertible {
-  typealias FloatLiteralType : _BuiltinFloatLiteralConvertible
+  associatedtype FloatLiteralType : _BuiltinFloatLiteralConvertible
   /// Create an instance initialized to `value`.
   init(floatLiteral value: FloatLiteralType)
 }
@@ -107,7 +107,7 @@ public protocol _BuiltinBooleanLiteralConvertible {
 /// Conforming types can be initialized with the Boolean literals
 /// `true` and `false`.
 public protocol BooleanLiteralConvertible {
-  typealias BooleanLiteralType : _BuiltinBooleanLiteralConvertible
+  associatedtype BooleanLiteralType : _BuiltinBooleanLiteralConvertible
   /// Create an instance initialized to `value`.
   init(booleanLiteral value: BooleanLiteralType)
 }
@@ -119,7 +119,7 @@ public protocol _BuiltinUnicodeScalarLiteralConvertible {
 /// Conforming types can be initialized with string literals
 /// containing a single [Unicode scalar value](http://www.unicode.org/glossary/#unicode_scalar_value).
 public protocol UnicodeScalarLiteralConvertible {
-  typealias UnicodeScalarLiteralType : _BuiltinUnicodeScalarLiteralConvertible
+  associatedtype UnicodeScalarLiteralType : _BuiltinUnicodeScalarLiteralConvertible
   /// Create an instance initialized to `value`.
   init(unicodeScalarLiteral value: UnicodeScalarLiteralType)
 }
@@ -129,7 +129,7 @@ public protocol _BuiltinExtendedGraphemeClusterLiteralConvertible
 
   init(
     _builtinExtendedGraphemeClusterLiteral start: Builtin.RawPointer,
-    byteSize: Builtin.Word,
+    utf8CodeUnitCount: Builtin.Word,
     isASCII: Builtin.Int1)
 }
 
@@ -138,7 +138,7 @@ public protocol _BuiltinExtendedGraphemeClusterLiteralConvertible
 public protocol ExtendedGraphemeClusterLiteralConvertible
   : UnicodeScalarLiteralConvertible {
 
-  typealias ExtendedGraphemeClusterLiteralType
+  associatedtype ExtendedGraphemeClusterLiteralType
     : _BuiltinExtendedGraphemeClusterLiteralConvertible
   /// Create an instance initialized to `value`.
   init(extendedGraphemeClusterLiteral value: ExtendedGraphemeClusterLiteralType)
@@ -149,7 +149,7 @@ public protocol _BuiltinStringLiteralConvertible
 
   init(
     _builtinStringLiteral start: Builtin.RawPointer,
-    byteSize: Builtin.Word,
+    utf8CodeUnitCount: Builtin.Word,
     isASCII: Builtin.Int1)
 }
 
@@ -158,7 +158,7 @@ public protocol _BuiltinUTF16StringLiteralConvertible
 
   init(
     _builtinUTF16StringLiteral start: Builtin.RawPointer,
-    numberOfCodeUnits: Builtin.Word)
+    utf16CodeUnitCount: Builtin.Word)
 }
 
 /// Conforming types can be initialized with arbitrary string literals.
@@ -167,22 +167,22 @@ public protocol StringLiteralConvertible
   // FIXME: when we have default function implementations in protocols, provide
   // an implementation of init(extendedGraphemeClusterLiteral:).
 
-  typealias StringLiteralType : _BuiltinStringLiteralConvertible
+  associatedtype StringLiteralType : _BuiltinStringLiteralConvertible
   /// Create an instance initialized to `value`.
   init(stringLiteral value: StringLiteralType)
 }
 
 /// Conforming types can be initialized with array literals.
 public protocol ArrayLiteralConvertible {
-  typealias Element
+  associatedtype Element
   /// Create an instance initialized with `elements`.
   init(arrayLiteral elements: Element...)
 }
 
 /// Conforming types can be initialized with dictionary literals.
 public protocol DictionaryLiteralConvertible {
-  typealias Key
-  typealias Value
+  associatedtype Key
+  associatedtype Value
   /// Create an instance initialized with `elements`.
   init(dictionaryLiteral elements: (Key, Value)...)
 }
@@ -215,12 +215,19 @@ public protocol _FileReferenceLiteralConvertible {
 }
 
 /// A container is destructor safe if whether it may store to memory on
-/// destruction only depends on its type parameters.
-/// For example, whether `Array<T>` may store to memory on destruction depends
-/// only on `T`.
-/// If `T` is an `Int` we know the `Array<Int>` does not store to memory during
-/// destruction. If `T` is an arbitrary class `Array<MemoryUnsafeDestructorClass>`
-/// then the compiler will deduce may store to memory on destruction because
-/// `MemoryUnsafeDestructorClass`'s destructor may store to memory on destruction.
+/// destruction only depends on its type parameters destructors.
+/// For example, whether `Array<Element>` may store to memory on destruction
+/// depends only on `Element`.
+/// If `Element` is an `Int` we know the `Array<Int>` does not store to memory
+/// during destruction. If `Element` is an arbitrary class
+/// `Array<MemoryUnsafeDestructorClass>` then the compiler will deduce may
+/// store to memory on destruction because `MemoryUnsafeDestructorClass`'s
+/// destructor may store to memory on destruction.
+/// If in this example during `Array`'s destructor we would call a method on any
+/// type parameter - say `Element.extraCleanup()` - that could store to memory,
+/// then Array would no longer be a _DestructorSafeContainer.
 public protocol _DestructorSafeContainer {
 }
+
+@available(*, unavailable, renamed: "Boolean")
+public typealias BooleanType = Boolean

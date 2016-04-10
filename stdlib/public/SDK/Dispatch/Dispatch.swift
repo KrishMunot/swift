@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -65,7 +65,7 @@ public var DISPATCH_QUEUE_PRIORITY_BACKGROUND: dispatch_queue_priority_t {
 }
 
 @warn_unused_result
-public func dispatch_get_global_queue(identifier: qos_class_t,
+public func dispatch_get_global_queue(_ identifier: qos_class_t,
                                       _ flags: UInt) -> dispatch_queue_t {
   return dispatch_get_global_queue(Int(identifier.rawValue), flags)
 }
